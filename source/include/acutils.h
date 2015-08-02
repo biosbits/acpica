@@ -1092,11 +1092,9 @@ AcpiUtFilePrintf (
 /*
  * utuuid -- UUID support functions
  */
-#if (defined ACPI_ASL_COMPILER || defined ACPI_EXEC_APP || defined ACPI_HELP_APP)
 void
 AcpiUtConvertStringToUuid (
     char                    *InString,
     UINT8                   *UuidBuffer);
-#endif
 
 #endif /* _ACUTILS_H */
