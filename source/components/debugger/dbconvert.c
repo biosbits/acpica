@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -45,7 +45,6 @@
 #include "accommon.h"
 #include "acdebug.h"
 
-#ifdef ACPI_DEBUGGER
 
 #define _COMPONENT          ACPI_CA_DEBUGGER
         ACPI_MODULE_NAME    ("dbconvert")
@@ -167,6 +166,10 @@ AcpiDbConvertToBuffer (
     ACPI_STATUS             Status;
 
 
+    /* Skip all preceding white space*/
+
+    AcpiUtRemoveWhitespace (&String);
+
     /* Generate the final buffer length */
 
     for (i = 0, Length = 0; String[i];)
@@ -199,7 +202,7 @@ AcpiDbConvertToBuffer (
         }
 
         j++;
-        i+=2;
+        i += 2;
         while (String[i] &&
               ((String[i] == ',') || (String[i] == ' ')))
         {
@@ -322,7 +325,7 @@ AcpiDbConvertToObject (
     default:
 
         Object->Type = ACPI_TYPE_INTEGER;
-        Status = AcpiUtStrtoul64 (String, 16, &Object->Integer.Value);
+        Status = AcpiUtStrtoul64 (String, &Object->Integer.Value);
         break;
     }
 
@@ -466,7 +469,7 @@ AcpiDbDumpPldBuffer (
     NewBuffer = AcpiDbEncodePldBuffer (PldInfo);
     if (!NewBuffer)
     {
-        return;
+        goto Exit;
     }
 
     /* The two bit-packed buffers should match */
@@ -525,8 +528,7 @@ AcpiDbDumpPldBuffer (
         AcpiOsPrintf (ACPI_PLD_OUTPUT, "PLD_HorizontalOffset", PldInfo->HorizontalOffset);
     }
 
-    ACPI_FREE (PldInfo);
     ACPI_FREE (NewBuffer);
+Exit:
+    ACPI_FREE (PldInfo);
 }
-
-#endif /* ACPI_DEBUGGER */

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -94,9 +94,10 @@
 #define AOPOBJ_AML_CONSTANT         0x01    /* Integer is an AML constant */
 #define AOPOBJ_STATIC_POINTER       0x02    /* Data is part of an ACPI table, don't delete */
 #define AOPOBJ_DATA_VALID           0x04    /* Object is initialized and data is valid */
-#define AOPOBJ_OBJECT_INITIALIZED   0x08    /* Region is initialized, _REG was run */
-#define AOPOBJ_SETUP_COMPLETE       0x10    /* Region setup is complete */
-#define AOPOBJ_INVALID              0x20    /* Host OS won't allow a Region address */
+#define AOPOBJ_OBJECT_INITIALIZED   0x08    /* Region is initialized */
+#define AOPOBJ_REG_CONNECTED        0x10    /* _REG was run */
+#define AOPOBJ_SETUP_COMPLETE       0x20    /* Region setup is complete */
+#define AOPOBJ_INVALID              0x40    /* Host OS won't allow a Region address */
 
 
 /******************************************************************************
@@ -132,7 +133,9 @@ typedef struct acpi_object_integer
     UINT32                          Length;
 
 
-typedef struct acpi_object_string   /* Null terminated, ASCII characters only */
+/* Null terminated, ASCII characters only */
+
+typedef struct acpi_object_string
 {
     ACPI_OBJECT_COMMON_HEADER
     ACPI_COMMON_BUFFER_INFO         (char)              /* String in AML stream or allocated string */
@@ -202,6 +205,7 @@ typedef struct acpi_object_region
     union acpi_operand_object       *Next;
     ACPI_PHYSICAL_ADDRESS           Address;
     UINT32                          Length;
+    void                            *Pointer;           /* Only for data table regions */
 
 } ACPI_OBJECT_REGION;
 
@@ -222,8 +226,8 @@ typedef struct acpi_object_method
     } Dispatch;
 
     UINT32                          AmlLength;
-    UINT8                           ThreadCount;
     ACPI_OWNER_ID                   OwnerId;
+    UINT8                           ThreadCount;
 
 } ACPI_OBJECT_METHOD;
 
@@ -250,8 +254,9 @@ typedef struct acpi_object_method
     union acpi_operand_object       *NotifyList[2];     /* Handlers for system/device notifies */\
     union acpi_operand_object       *Handler;           /* Handler for Address space */
 
+/* COMMON NOTIFY for POWER, PROCESSOR, DEVICE, and THERMAL */
 
-typedef struct acpi_object_notify_common    /* COMMON NOTIFY for POWER, PROCESSOR, DEVICE, and THERMAL */
+typedef struct acpi_object_notify_common
 {
     ACPI_OBJECT_COMMON_HEADER
     ACPI_COMMON_NOTIFY_INFO
@@ -322,8 +327,9 @@ typedef struct acpi_object_thermal_zone
     UINT8                           StartFieldBitOffset;/* Bit offset within first field datum (0-63) */\
     UINT8                           AccessLength;       /* For serial regions/fields */
 
+/* COMMON FIELD (for BUFFER, REGION, BANK, and INDEX fields) */
 
-typedef struct acpi_object_field_common                 /* COMMON FIELD (for BUFFER, REGION, BANK, and INDEX fields) */
+typedef struct acpi_object_field_common
 {
     ACPI_OBJECT_COMMON_HEADER
     ACPI_COMMON_FIELD_INFO
@@ -340,6 +346,7 @@ typedef struct acpi_object_region_field
     union acpi_operand_object       *RegionObj;         /* Containing OpRegion object */
     UINT8                           *ResourceBuffer;    /* ResourceTemplate for serial regions/fields */
     UINT16                          PinNumberIndex;     /* Index relative to previous Connection/Template */
+    UINT8                           *InternalPccBuffer; /* Internal buffer for fields associated with PCC */
 
 } ACPI_OBJECT_REGION_FIELD;
 
@@ -375,6 +382,7 @@ typedef struct acpi_object_buffer_field
 {
     ACPI_OBJECT_COMMON_HEADER
     ACPI_COMMON_FIELD_INFO
+    BOOLEAN                         IsCreateField;      /* Special case for objects created by CreateField() */
     union acpi_operand_object       *BufferObj;         /* Containing Buffer object */
 
 } ACPI_OBJECT_BUFFER_FIELD;
@@ -406,6 +414,7 @@ typedef struct acpi_object_addr_handler
     ACPI_ADR_SPACE_HANDLER          Handler;
     ACPI_NAMESPACE_NODE             *Node;              /* Parent device */
     void                            *Context;
+    ACPI_MUTEX                      ContextMutex;
     ACPI_ADR_SPACE_SETUP            Setup;
     union acpi_operand_object       *RegionList;        /* Regions using this handler */
     union acpi_operand_object       *Next;
@@ -433,11 +442,12 @@ typedef struct acpi_object_reference
     ACPI_OBJECT_COMMON_HEADER
     UINT8                           Class;              /* Reference Class */
     UINT8                           TargetType;         /* Used for Index Op */
-    UINT8                           Reserved;
+    UINT8                           Resolved;           /* Reference has been resolved to a value */
     void                            *Object;            /* NameOp=>HANDLE to obj, IndexOp=>ACPI_OPERAND_OBJECT */
     ACPI_NAMESPACE_NODE             *Node;              /* RefOf or Namepath */
     union acpi_operand_object       **Where;            /* Target of Index */
     UINT8                           *IndexPointer;      /* Used for Buffers and Strings */
+    UINT8                           *Aml;               /* Used for deferred resolution of the ref */
     UINT32                          Value;              /* Used for Local/Arg/Index/DdbHandle */
 
 } ACPI_OBJECT_REFERENCE;
@@ -457,7 +467,6 @@ typedef enum
     ACPI_REFCLASS_MAX               = 6
 
 } ACPI_REFERENCE_CLASSES;
-
 
 /*
  * Extra object is used as additional storage for types that

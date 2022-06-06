@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -108,14 +108,16 @@
 #define ACPI_LV_RESOURCES           0x00010000
 #define ACPI_LV_USER_REQUESTS       0x00020000
 #define ACPI_LV_PACKAGE             0x00040000
-#define ACPI_LV_VERBOSITY1          0x0007FF40 | ACPI_LV_ALL_EXCEPTIONS
+#define ACPI_LV_EVALUATION          0x00080000
+#define ACPI_LV_VERBOSITY1          0x000FFF40 | ACPI_LV_ALL_EXCEPTIONS
 
 /* Trace verbosity level 2 [Function tracing and memory allocation] */
 
 #define ACPI_LV_ALLOCATIONS         0x00100000
 #define ACPI_LV_FUNCTIONS           0x00200000
 #define ACPI_LV_OPTIMIZATIONS       0x00400000
-#define ACPI_LV_VERBOSITY2          0x00700000 | ACPI_LV_VERBOSITY1
+#define ACPI_LV_PARSE_TREES         0x00800000
+#define ACPI_LV_VERBOSITY2          0x00F00000 | ACPI_LV_VERBOSITY1
 #define ACPI_LV_ALL                 ACPI_LV_VERBOSITY2
 
 /* Trace verbosity level 3 [Threading, I/O, and Interrupts] */
@@ -167,6 +169,7 @@
 #define ACPI_DB_TABLES              ACPI_DEBUG_LEVEL (ACPI_LV_TABLES)
 #define ACPI_DB_FUNCTIONS           ACPI_DEBUG_LEVEL (ACPI_LV_FUNCTIONS)
 #define ACPI_DB_OPTIMIZATIONS       ACPI_DEBUG_LEVEL (ACPI_LV_OPTIMIZATIONS)
+#define ACPI_DB_PARSE_TREES         ACPI_DEBUG_LEVEL (ACPI_LV_PARSE_TREES)
 #define ACPI_DB_VALUES              ACPI_DEBUG_LEVEL (ACPI_LV_VALUES)
 #define ACPI_DB_OBJECTS             ACPI_DEBUG_LEVEL (ACPI_LV_OBJECTS)
 #define ACPI_DB_ALLOCATIONS         ACPI_DEBUG_LEVEL (ACPI_LV_ALLOCATIONS)
@@ -175,6 +178,7 @@
 #define ACPI_DB_INTERRUPTS          ACPI_DEBUG_LEVEL (ACPI_LV_INTERRUPTS)
 #define ACPI_DB_USER_REQUESTS       ACPI_DEBUG_LEVEL (ACPI_LV_USER_REQUESTS)
 #define ACPI_DB_PACKAGE             ACPI_DEBUG_LEVEL (ACPI_LV_PACKAGE)
+#define ACPI_DB_EVALUATION          ACPI_DEBUG_LEVEL (ACPI_LV_EVALUATION)
 #define ACPI_DB_MUTEX               ACPI_DEBUG_LEVEL (ACPI_LV_MUTEX)
 #define ACPI_DB_EVENTS              ACPI_DEBUG_LEVEL (ACPI_LV_EVENTS)
 
@@ -182,7 +186,7 @@
 
 /* Defaults for DebugLevel, debug and normal */
 
-#define ACPI_DEBUG_DEFAULT          (ACPI_LV_INIT | ACPI_LV_DEBUG_OBJECT | ACPI_LV_REPAIR)
+#define ACPI_DEBUG_DEFAULT          (ACPI_LV_INIT | ACPI_LV_DEBUG_OBJECT | ACPI_LV_EVALUATION | ACPI_LV_REPAIR)
 #define ACPI_NORMAL_DEFAULT         (ACPI_LV_INIT | ACPI_LV_DEBUG_OBJECT | ACPI_LV_REPAIR)
 #define ACPI_DEBUG_ALL              (ACPI_LV_AML_DISASSEMBLE | ACPI_LV_ALL_EXCEPTIONS | ACPI_LV_ALL)
 
@@ -235,6 +239,7 @@
 #define ACPI_EXCEPTION(plist)           AcpiException plist
 #define ACPI_ERROR(plist)               AcpiError plist
 #define ACPI_BIOS_WARNING(plist)        AcpiBiosWarning plist
+#define ACPI_BIOS_EXCEPTION(plist)      AcpiBiosException plist
 #define ACPI_BIOS_ERROR(plist)          AcpiBiosError plist
 #define ACPI_DEBUG_OBJECT(obj,l,i)      AcpiExDoDebugObject(obj,l,i)
 
@@ -247,6 +252,7 @@
 #define ACPI_EXCEPTION(plist)
 #define ACPI_ERROR(plist)
 #define ACPI_BIOS_WARNING(plist)
+#define ACPI_BIOS_EXCEPTION(plist)
 #define ACPI_BIOS_ERROR(plist)
 #define ACPI_DEBUG_OBJECT(obj,l,i)
 
@@ -267,7 +273,7 @@
 #define ACPI_GET_FUNCTION_NAME          _AcpiFunctionName
 
 /*
- * The Name parameter should be the procedure name as a quoted string.
+ * The Name parameter should be the procedure name as a non-quoted string.
  * The function name is also used by the function exit macros below.
  * Note: (const char) is used to be compatible with the debug interfaces
  * and macros such as __FUNCTION__.
@@ -372,7 +378,7 @@
     ACPI_TRACE_ENTRY (Name, AcpiUtTraceU32, UINT32, Value)
 
 #define ACPI_FUNCTION_TRACE_STR(Name, String) \
-    ACPI_TRACE_ENTRY (Name, AcpiUtTraceStr, char *, String)
+    ACPI_TRACE_ENTRY (Name, AcpiUtTraceStr, const char *, String)
 
 #define ACPI_FUNCTION_ENTRY() \
     AcpiUtTrackStackPtr()
@@ -394,7 +400,7 @@
  *
  * A less-safe version of the macros is provided for optional use if the
  * compiler uses excessive CPU stack (for example, this may happen in the
- * debug case if code optimzation is disabled.)
+ * debug case if code optimization is disabled.)
  */
 
 /* Exit trace helper macro */
@@ -432,6 +438,9 @@
 #define return_PTR(Pointer) \
     ACPI_TRACE_EXIT (AcpiUtPtrExit, void *, Pointer)
 
+#define return_STR(String) \
+    ACPI_TRACE_EXIT (AcpiUtStrExit, const char *, String)
+
 #define return_VALUE(Value) \
     ACPI_TRACE_EXIT (AcpiUtValueExit, UINT64, Value)
 
@@ -444,7 +453,7 @@
 /* Conditional execution */
 
 #define ACPI_DEBUG_EXEC(a)              a
-#define ACPI_DEBUG_ONLY_MEMBERS(a)      a;
+#define ACPI_DEBUG_ONLY_MEMBERS(a)      a
 #define _VERBOSE_STRUCTURES
 
 
@@ -486,6 +495,7 @@
 #define return_VOID                     return
 #define return_ACPI_STATUS(s)           return(s)
 #define return_PTR(s)                   return(s)
+#define return_STR(s)                   return(s)
 #define return_VALUE(s)                 return(s)
 #define return_UINT8(s)                 return(s)
 #define return_UINT32(s)                return(s)

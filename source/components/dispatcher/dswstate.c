@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -299,8 +299,8 @@ AcpiDsResultStackPop (
 
     if (WalkState->Results == NULL)
     {
-        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "Result stack underflow - State=%p\n",
-            WalkState));
+        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
+            "Result stack underflow - State=%p\n", WalkState));
         return (AE_AML_NO_OPERAND);
     }
 
@@ -625,7 +625,7 @@ AcpiDsCreateWalkState (
 
     /* Init the method args/local */
 
-#if (!defined (ACPI_NO_METHOD_EXECUTION) && !defined (ACPI_CONSTANT_EVAL_ONLY))
+#ifndef ACPI_CONSTANT_EVAL_ONLY
     AcpiDsMethodDataInit (WalkState);
 #endif
 
@@ -707,7 +707,8 @@ AcpiDsInitAmlWalk (
 
         /* Push start scope on scope stack and make it current  */
 
-        Status = AcpiDsScopeStackPush (MethodNode, ACPI_TYPE_METHOD, WalkState);
+        Status = AcpiDsScopeStackPush (
+            MethodNode, ACPI_TYPE_METHOD, WalkState);
         if (ACPI_FAILURE (Status))
         {
             return_ACPI_STATUS (Status);
@@ -750,7 +751,7 @@ AcpiDsInitAmlWalk (
             /* Push start scope on scope stack and make it current  */
 
             Status = AcpiDsScopeStackPush (ParserState->StartNode,
-                            ParserState->StartNode->Type, WalkState);
+                ParserState->StartNode->Type, WalkState);
             if (ACPI_FAILURE (Status))
             {
                 return_ACPI_STATUS (Status);

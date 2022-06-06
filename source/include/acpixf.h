@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -46,7 +46,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20150717
+#define ACPI_CA_VERSION                 0x20220331
 
 #include "acconfig.h"
 #include "actypes.h"
@@ -162,13 +162,14 @@ ACPI_INIT_GLOBAL (UINT8,            AcpiGbl_CreateOsiMethod, TRUE);
 ACPI_INIT_GLOBAL (UINT8,            AcpiGbl_UseDefaultRegisterWidths, TRUE);
 
 /*
- * Whether or not to verify the table checksum before installation. Set
- * this to TRUE to verify the table checksum before install it to the table
- * manager. Note that enabling this option causes errors to happen in some
- * OSPMs during early initialization stages. Default behavior is to do such
- * verification.
+ * Whether or not to validate (map) an entire table to verify
+ * checksum/duplication in early stage before install. Set this to TRUE to
+ * allow early table validation before install it to the table manager.
+ * Note that enabling this option causes errors to happen in some OSPMs
+ * during early initialization stages. Default behavior is to allow such
+ * validation.
  */
-ACPI_INIT_GLOBAL (UINT8,            AcpiGbl_VerifyTableChecksum, TRUE);
+ACPI_INIT_GLOBAL (UINT8,            AcpiGbl_EnableTableValidation, TRUE);
 
 /*
  * Optionally enable output from the AML Debug Object.
@@ -249,6 +250,23 @@ ACPI_INIT_GLOBAL (UINT8,            AcpiGbl_OsiData, 0);
 ACPI_INIT_GLOBAL (BOOLEAN,          AcpiGbl_ReducedHardware, FALSE);
 
 /*
+ * Maximum timeout for While() loop iterations before forced method abort.
+ * This mechanism is intended to prevent infinite loops during interpreter
+ * execution within a host kernel.
+ */
+ACPI_INIT_GLOBAL (UINT32,           AcpiGbl_MaxLoopIterations, ACPI_MAX_LOOP_TIMEOUT);
+
+/*
+ * Optionally ignore AE_NOT_FOUND errors from named reference package elements
+ * during DSDT/SSDT table loading. This reduces error "noise" in platforms
+ * whose firmware is carrying around a bunch of unused package objects that
+ * refer to non-existent named objects. However, If the AML actually tries to
+ * use such a package, the unresolved element(s) will be replaced with NULL
+ * elements.
+ */
+ACPI_INIT_GLOBAL (BOOLEAN,          AcpiGbl_IgnorePackageResolutionErrors, FALSE);
+
+/*
  * This mechanism is used to trace a specified AML method. The method is
  * traced each time it is executed.
  */
@@ -268,6 +286,19 @@ ACPI_INIT_GLOBAL (UINT32,           AcpiDbgLevel, ACPI_DEBUG_DEFAULT);
 ACPI_INIT_GLOBAL (UINT32,           AcpiDbgLevel, ACPI_NORMAL_DEFAULT);
 #endif
 ACPI_INIT_GLOBAL (UINT32,           AcpiDbgLayer, ACPI_COMPONENT_DEFAULT);
+
+/* Optionally enable timer output with Debug Object output */
+
+ACPI_INIT_GLOBAL (UINT8,            AcpiGbl_DisplayDebugTimer, FALSE);
+
+/*
+ * Debugger command handshake globals. Host OSes need to access these
+ * variables to implement their own command handshake mechanism.
+ */
+#ifdef ACPI_DEBUGGER
+ACPI_INIT_GLOBAL (BOOLEAN,          AcpiGbl_MethodExecuting, FALSE);
+ACPI_GLOBAL (char,                  AcpiGbl_DbLineBuf[ACPI_DB_LINE_BUFFER_SIZE]);
+#endif
 
 /*
  * Other miscellaneous globals
@@ -307,6 +338,9 @@ ACPI_GLOBAL (BOOLEAN,               AcpiGbl_SystemAwakeAndRunning);
 #define ACPI_HW_DEPENDENT_RETURN_OK(Prototype) \
     ACPI_EXTERNAL_RETURN_OK(Prototype)
 
+#define ACPI_HW_DEPENDENT_RETURN_UINT32(prototype) \
+    ACPI_EXTERNAL_RETURN_UINT32(prototype)
+
 #define ACPI_HW_DEPENDENT_RETURN_VOID(Prototype) \
     ACPI_EXTERNAL_RETURN_VOID(Prototype)
 
@@ -316,6 +350,9 @@ ACPI_GLOBAL (BOOLEAN,               AcpiGbl_SystemAwakeAndRunning);
 
 #define ACPI_HW_DEPENDENT_RETURN_OK(Prototype) \
     static ACPI_INLINE Prototype {return(AE_OK);}
+
+#define ACPI_HW_DEPENDENT_RETURN_UINT32(prototype) \
+    static ACPI_INLINE prototype {return(0);}
 
 #define ACPI_HW_DEPENDENT_RETURN_VOID(Prototype) \
     static ACPI_INLINE Prototype {return;}
@@ -377,6 +414,30 @@ ACPI_GLOBAL (BOOLEAN,               AcpiGbl_SystemAwakeAndRunning);
 #endif /* ACPI_APPLICATION */
 
 
+/*
+ * Debugger prototypes
+ *
+ * All interfaces used by debugger will be configured
+ * out of the ACPICA build unless the ACPI_DEBUGGER
+ * flag is defined.
+ */
+#ifdef ACPI_DEBUGGER
+#define ACPI_DBR_DEPENDENT_RETURN_OK(Prototype) \
+    ACPI_EXTERNAL_RETURN_OK(Prototype)
+
+#define ACPI_DBR_DEPENDENT_RETURN_VOID(Prototype) \
+    ACPI_EXTERNAL_RETURN_VOID(Prototype)
+
+#else
+#define ACPI_DBR_DEPENDENT_RETURN_OK(Prototype) \
+    static ACPI_INLINE Prototype {return(AE_OK);}
+
+#define ACPI_DBR_DEPENDENT_RETURN_VOID(Prototype) \
+    static ACPI_INLINE Prototype {return;}
+
+#endif /* ACPI_DEBUGGER */
+
+
 /*****************************************************************************
  *
  * ACPICA public interface prototypes
@@ -387,29 +448,29 @@ ACPI_GLOBAL (BOOLEAN,               AcpiGbl_SystemAwakeAndRunning);
  * Initialization
  */
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiInitializeTables (
     ACPI_TABLE_DESC         *InitialStorage,
     UINT32                  InitialTableCount,
     BOOLEAN                 AllowResize))
 
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiInitializeSubsystem (
     void))
 
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiEnableSubsystem (
     UINT32                  Flags))
 
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiInitializeObjects (
     UINT32                  Flags))
 
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiTerminate (
     void))
 
@@ -487,15 +548,25 @@ AcpiDecodePldBuffer (
  * ACPI table load/unload interfaces
  */
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiInstallTable (
-    ACPI_PHYSICAL_ADDRESS   Address,
-    BOOLEAN                 Physical))
+    ACPI_TABLE_HEADER       *Table))
+
+ACPI_EXTERNAL_RETURN_STATUS (
+ACPI_STATUS ACPI_INIT_FUNCTION
+AcpiInstallPhysicalTable (
+    ACPI_PHYSICAL_ADDRESS   Address))
 
 ACPI_EXTERNAL_RETURN_STATUS (
 ACPI_STATUS
 AcpiLoadTable (
-    ACPI_TABLE_HEADER       *Table))
+    ACPI_TABLE_HEADER       *Table,
+    UINT32                  *TableIdx))
+
+ACPI_EXTERNAL_RETURN_STATUS (
+ACPI_STATUS
+AcpiUnloadTable (
+    UINT32                  TableIndex))
 
 ACPI_EXTERNAL_RETURN_STATUS (
 ACPI_STATUS
@@ -503,7 +574,7 @@ AcpiUnloadParentTable (
     ACPI_HANDLE             Object))
 
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiLoadTables (
     void))
 
@@ -512,12 +583,12 @@ AcpiLoadTables (
  * ACPI table manipulation interfaces
  */
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiReallocateRootTable (
     void))
 
 ACPI_EXTERNAL_RETURN_STATUS (
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiFindRootPointer (
     ACPI_PHYSICAL_ADDRESS   *RsdpAddress))
 
@@ -534,6 +605,11 @@ AcpiGetTable (
     ACPI_STRING             Signature,
     UINT32                  Instance,
     ACPI_TABLE_HEADER       **OutTable))
+
+ACPI_EXTERNAL_RETURN_VOID (
+void
+AcpiPutTable (
+    ACPI_TABLE_HEADER       *Table))
 
 ACPI_EXTERNAL_RETURN_STATUS (
 ACPI_STATUS
@@ -876,6 +952,13 @@ AcpiFinishGpe (
 
 ACPI_HW_DEPENDENT_RETURN_STATUS (
 ACPI_STATUS
+AcpiMaskGpe (
+    ACPI_HANDLE             GpeDevice,
+    UINT32                  GpeNumber,
+    BOOLEAN                 IsMasked))
+
+ACPI_HW_DEPENDENT_RETURN_STATUS (
+ACPI_STATUS
 AcpiMarkGpeForWake (
     ACPI_HANDLE             GpeDevice,
     UINT32                  GpeNumber))
@@ -901,6 +984,12 @@ AcpiGetGpeStatus (
     UINT32                  GpeNumber,
     ACPI_EVENT_STATUS       *EventStatus))
 
+ACPI_HW_DEPENDENT_RETURN_UINT32 (
+UINT32
+AcpiDispatchGpe (
+    ACPI_HANDLE             GpeDevice,
+    UINT32                  GpeNumber))
+
 ACPI_HW_DEPENDENT_RETURN_STATUS (
 ACPI_STATUS
 AcpiDisableAllGpes (
@@ -914,6 +1003,10 @@ AcpiEnableAllRuntimeGpes (
 ACPI_HW_DEPENDENT_RETURN_STATUS (
 ACPI_STATUS
 AcpiEnableAllWakeupGpes (
+    void))
+
+ACPI_HW_DEPENDENT_RETURN_UINT32 (
+    UINT32                  AcpiAnyGpeStatusSet (
     void))
 
 ACPI_HW_DEPENDENT_RETURN_STATUS (
@@ -1139,11 +1232,9 @@ AcpiWarning (
     ...))
 
 ACPI_MSG_DEPENDENT_RETURN_VOID (
-ACPI_PRINTF_LIKE(3)
+ACPI_PRINTF_LIKE(1)
 void ACPI_INTERNAL_VAR_XFACE
 AcpiInfo (
-    const char              *ModuleName,
-    UINT32                  LineNumber,
     const char              *Format,
     ...))
 
@@ -1153,6 +1244,16 @@ void ACPI_INTERNAL_VAR_XFACE
 AcpiBiosError (
     const char              *ModuleName,
     UINT32                  LineNumber,
+    const char              *Format,
+    ...))
+
+ACPI_MSG_DEPENDENT_RETURN_VOID (
+ACPI_PRINTF_LIKE(4)
+void  ACPI_INTERNAL_VAR_XFACE
+AcpiBiosException (
+    const char              *ModuleName,
+    UINT32                  LineNumber,
+    ACPI_STATUS             Status,
     const char              *Format,
     ...))
 
@@ -1201,11 +1302,20 @@ AcpiTracePoint (
     UINT8                   *Aml,
     char                    *Pathname))
 
-ACPI_APP_DEPENDENT_RETURN_VOID (
-ACPI_PRINTF_LIKE(1)
-void ACPI_INTERNAL_VAR_XFACE
-AcpiLogError (
-    const char              *Format,
-    ...))
+ACPI_STATUS
+AcpiInitializeDebugger (
+    void);
+
+void
+AcpiTerminateDebugger (
+    void);
+
+void
+AcpiRunDebugger (
+    char                    *BatchBuffer);
+
+void
+AcpiSetDebuggerThreadId (
+    ACPI_THREAD_ID          ThreadId);
 
 #endif /* __ACXFACE_H__ */

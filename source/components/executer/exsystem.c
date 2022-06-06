@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -86,7 +86,6 @@ AcpiExSystemWaitSemaphore (
         /* We must wait, so unlock the interpreter */
 
         AcpiExExitInterpreter ();
-
         Status = AcpiOsWaitSemaphore (Semaphore, 1, Timeout);
 
         ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
@@ -95,7 +94,7 @@ AcpiExSystemWaitSemaphore (
 
         /* Reacquire the interpreter */
 
-       AcpiExEnterInterpreter ();
+        AcpiExEnterInterpreter ();
     }
 
     return_ACPI_STATUS (Status);
@@ -139,7 +138,6 @@ AcpiExSystemWaitMutex (
         /* We must wait, so unlock the interpreter */
 
         AcpiExExitInterpreter ();
-
         Status = AcpiOsAcquireMutex (Mutex, Timeout);
 
         ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
@@ -159,7 +157,7 @@ AcpiExSystemWaitMutex (
  *
  * FUNCTION:    AcpiExSystemDoStall
  *
- * PARAMETERS:  HowLong         - The amount of time to stall,
+ * PARAMETERS:  HowLongUs       - The amount of time to stall,
  *                                in microseconds
  *
  * RETURN:      Status
@@ -174,7 +172,7 @@ AcpiExSystemWaitMutex (
 
 ACPI_STATUS
 AcpiExSystemDoStall (
-    UINT32                  HowLong)
+    UINT32                  HowLongUs)
 {
     ACPI_STATUS             Status = AE_OK;
 
@@ -182,21 +180,26 @@ AcpiExSystemDoStall (
     ACPI_FUNCTION_ENTRY ();
 
 
-    if (HowLong > 255) /* 255 microseconds */
+    if (HowLongUs > 255)
     {
         /*
-         * Longer than 255 usec, this is an error
+         * Longer than 255 microseconds, this is an error
          *
          * (ACPI specifies 100 usec as max, but this gives some slack in
          * order to support existing BIOSs)
          */
-        ACPI_ERROR ((AE_INFO, "Time parameter is too large (%u)",
-            HowLong));
+        ACPI_ERROR ((AE_INFO,
+            "Time parameter is too large (%u)", HowLongUs));
         Status = AE_AML_OPERAND_VALUE;
     }
     else
     {
-        AcpiOsStall (HowLong);
+        if (HowLongUs > 100)
+	{
+            ACPI_WARNING ((AE_INFO,
+                "Time parameter %u us > 100 us violating ACPI spec, please fix the firmware.", HowLongUs));
+	}
+        AcpiOsStall (HowLongUs);
     }
 
     return (Status);
@@ -207,7 +210,7 @@ AcpiExSystemDoStall (
  *
  * FUNCTION:    AcpiExSystemDoSleep
  *
- * PARAMETERS:  HowLong         - The amount of time to sleep,
+ * PARAMETERS:  HowLongMs       - The amount of time to sleep,
  *                                in milliseconds
  *
  * RETURN:      None
@@ -218,7 +221,7 @@ AcpiExSystemDoStall (
 
 ACPI_STATUS
 AcpiExSystemDoSleep (
-    UINT64                  HowLong)
+    UINT64                  HowLongMs)
 {
     ACPI_FUNCTION_ENTRY ();
 
@@ -228,15 +231,27 @@ AcpiExSystemDoSleep (
     AcpiExExitInterpreter ();
 
     /*
+     * Warn users about excessive sleep times, so ASL code can be improved to
+     * use polling or similar techniques.
+     */
+    if (HowLongMs > 10)
+    {
+        ACPI_WARNING ((AE_INFO,
+            "Firmware issue: Excessive sleep time (0x%8.8X%8.8X ms > 10 ms)"
+            " in ACPI Control Method",
+            ACPI_FORMAT_UINT64 (HowLongMs)));
+    }
+
+    /*
      * For compatibility with other ACPI implementations and to prevent
      * accidental deep sleeps, limit the sleep time to something reasonable.
      */
-    if (HowLong > ACPI_MAX_SLEEP)
+    if (HowLongMs > ACPI_MAX_SLEEP)
     {
-        HowLong = ACPI_MAX_SLEEP;
+        HowLongMs = ACPI_MAX_SLEEP;
     }
 
-    AcpiOsSleep (HowLong);
+    AcpiOsSleep (HowLongMs);
 
     /* And now we must get the interpreter again */
 
@@ -306,7 +321,7 @@ AcpiExSystemWaitEvent (
     if (ObjDesc)
     {
         Status = AcpiExSystemWaitSemaphore (ObjDesc->Event.OsSemaphore,
-                    (UINT16) TimeDesc->Integer.Value);
+            (UINT16) TimeDesc->Integer.Value);
     }
 
     return_ACPI_STATUS (Status);

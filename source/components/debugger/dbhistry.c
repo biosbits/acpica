@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -45,7 +45,6 @@
 #include "accommon.h"
 #include "acdebug.h"
 
-#ifdef ACPI_DEBUGGER
 
 #define _COMPONENT          ACPI_CA_DEBUGGER
         ACPI_MODULE_NAME    ("dbhistry")
@@ -68,7 +67,6 @@ static HISTORY_INFO         AcpiGbl_HistoryBuffer[HISTORY_SIZE];
 static UINT16               AcpiGbl_LoHistory = 0;
 static UINT16               AcpiGbl_NumHistory = 0;
 static UINT16               AcpiGbl_NextHistoryIndex = 0;
-UINT32                      AcpiGbl_NextCmdNum = 1;
 
 
 /*******************************************************************************
@@ -102,6 +100,7 @@ AcpiDbAddToHistory (
     {
         BufferLen = (UINT16) strlen (
             AcpiGbl_HistoryBuffer[AcpiGbl_NextHistoryIndex].Command);
+
         if (CmdLen > BufferLen)
         {
             AcpiOsFree (AcpiGbl_HistoryBuffer[AcpiGbl_NextHistoryIndex].
@@ -176,7 +175,7 @@ AcpiDbDisplayHistory (
     {
         if (AcpiGbl_HistoryBuffer[HistoryIndex].Command)
         {
-            AcpiOsPrintf ("%3ld  %s\n",
+            AcpiOsPrintf ("%3u  %s\n",
                 AcpiGbl_HistoryBuffer[HistoryIndex].CmdNum,
                 AcpiGbl_HistoryBuffer[HistoryIndex].Command);
         }
@@ -269,5 +268,3 @@ AcpiDbGetHistoryByIndex (
     AcpiOsPrintf ("Invalid history number: %u\n", HistoryIndex);
     return (NULL);
 }
-
-#endif /* ACPI_DEBUGGER */

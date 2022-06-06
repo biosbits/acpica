@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -96,7 +96,7 @@ MpSaveGpioInfo (
 
     /* Mapfile option enabled? */
 
-    if (!Gbl_MapfileFlag)
+    if (!AslGbl_MapfileFlag)
     {
         return;
     }
@@ -147,7 +147,7 @@ MpSaveSerialInfo (
 
     /* Mapfile option enabled? */
 
-    if (!Gbl_MapfileFlag)
+    if (!AslGbl_MapfileFlag)
     {
         return;
     }
@@ -224,14 +224,14 @@ MpCreateGpioInfo (
      * sorted by both source device name and then the pin number. There is
      * one block per pin.
      */
-    Buffer = UtStringCacheCalloc (sizeof (ACPI_GPIO_INFO));
+    Buffer = UtLocalCacheCalloc (sizeof (ACPI_GPIO_INFO));
     Info = ACPI_CAST_PTR (ACPI_GPIO_INFO, Buffer);
 
-    NextGpio = Gbl_GpioList;
+    NextGpio = AslGbl_GpioList;
     PrevGpio = NULL;
-    if (!Gbl_GpioList)
+    if (!AslGbl_GpioList)
     {
-        Gbl_GpioList = Info;
+        AslGbl_GpioList = Info;
         Info->Next = NULL;
         return (Info);
     }
@@ -239,7 +239,7 @@ MpCreateGpioInfo (
     /* Sort on source DeviceName first */
 
     while (NextGpio &&
-            (strcmp (DeviceName, NextGpio->DeviceName) > 0))
+        (strcmp (DeviceName, NextGpio->DeviceName) > 0))
     {
         PrevGpio = NextGpio;
         NextGpio = NextGpio->Next;
@@ -248,8 +248,8 @@ MpCreateGpioInfo (
     /* Now sort on the PinNumber */
 
     while (NextGpio &&
-            (NextGpio->PinNumber < PinNumber) &&
-            !strcmp (DeviceName, NextGpio->DeviceName))
+        (NextGpio->PinNumber < PinNumber) &&
+        !strcmp (DeviceName, NextGpio->DeviceName))
     {
         PrevGpio = NextGpio;
         NextGpio = NextGpio->Next;
@@ -263,7 +263,7 @@ MpCreateGpioInfo (
     }
     else
     {
-        Gbl_GpioList = Info;
+        AslGbl_GpioList = Info;
     }
 
     Info->Next = NextGpio;
@@ -301,14 +301,14 @@ MpCreateSerialInfo (
      * Allocate a new info block and insert it into the global Serial list
      * sorted by both source device name and then the address.
      */
-    Buffer = UtStringCacheCalloc (sizeof (ACPI_SERIAL_INFO));
+    Buffer = UtLocalCacheCalloc (sizeof (ACPI_SERIAL_INFO));
     Info = ACPI_CAST_PTR (ACPI_SERIAL_INFO, Buffer);
 
-    NextSerial = Gbl_SerialList;
+    NextSerial = AslGbl_SerialList;
     PrevSerial = NULL;
-    if (!Gbl_SerialList)
+    if (!AslGbl_SerialList)
     {
-        Gbl_SerialList = Info;
+        AslGbl_SerialList = Info;
         Info->Next = NULL;
         return (Info);
     }
@@ -340,7 +340,7 @@ MpCreateSerialInfo (
     }
     else
     {
-        Gbl_SerialList = Info;
+        AslGbl_SerialList = Info;
     }
 
     Info->Next = NextSerial;

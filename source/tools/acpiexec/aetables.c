@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -87,7 +87,6 @@ static ACPI_TABLE_XSDT          *LocalXSDT;
 #define BASE_XSDT_SIZE          ((BASE_XSDT_TABLES) * sizeof (UINT64))
 
 #define ACPI_MAX_INIT_TABLES    (32)
-static ACPI_TABLE_DESC          Tables[ACPI_MAX_INIT_TABLES];
 
 
 /******************************************************************************
@@ -113,14 +112,14 @@ AeTableOverride (
 
     /* This code exercises the table override mechanism in the core */
 
-    if (ACPI_COMPARE_NAME (ExistingTable->Signature, ACPI_SIG_DSDT))
+    if (ACPI_COMPARE_NAMESEG (ExistingTable->Signature, ACPI_SIG_DSDT))
     {
         *NewTable = DsdtToInstallOverride;
     }
 
     /* This code tests override of dynamically loaded tables */
 
-    else if (ACPI_COMPARE_NAME (ExistingTable->Signature, "OEM9"))
+    else if (ACPI_COMPARE_NAMESEG (ExistingTable->Signature, "OEM9"))
     {
         *NewTable = ACPI_CAST_PTR (ACPI_TABLE_HEADER, Ssdt3Code);
     }
@@ -148,14 +147,20 @@ AeInitializeTableHeader (
     UINT32                  Length)
 {
 
-    ACPI_MOVE_NAME (Header->Signature, Signature);
+    ACPI_COPY_NAMESEG (Header->Signature, Signature);
     Header->Length = Length;
 
     Header->OemRevision = 0x1001;
-    strncpy (Header->OemId, "Intel", ACPI_OEM_ID_SIZE);
-    strncpy (Header->OemTableId, "AcpiExec", ACPI_OEM_TABLE_ID_SIZE);
-    strncpy (Header->AslCompilerId, "INTL", ACPI_NAME_SIZE);
-    Header->AslCompilerRevision = 0x20131218;
+    memcpy (Header->OemId, "Intel ", ACPI_OEM_ID_SIZE);
+    memcpy (Header->OemTableId, "AcpiExec", ACPI_OEM_TABLE_ID_SIZE);
+    ACPI_COPY_NAMESEG (Header->AslCompilerId, "INTL");
+    Header->AslCompilerRevision = ACPI_CA_VERSION;
+
+    /* Set the checksum, must set to zero first */
+
+    Header->Checksum = 0;
+    Header->Checksum = (UINT8) -AcpiTbChecksum (
+        (void *) Header, Header->Length);
 }
 
 
@@ -164,7 +169,7 @@ AeInitializeTableHeader (
  * FUNCTION:    AeBuildLocalTables
  *
  * PARAMETERS:  TableCount      - Number of tables on the command line
- *              TableList       - List of actual tables from files
+ *              ListHead        - List of actual tables from files
  *
  * RETURN:      Status
  *
@@ -175,12 +180,12 @@ AeInitializeTableHeader (
 
 ACPI_STATUS
 AeBuildLocalTables (
-    UINT32                  TableCount,
-    AE_TABLE_DESC           *TableList)
+    ACPI_NEW_TABLE_DESC     *ListHead)
 {
+    UINT32                  TableCount = 1;
     ACPI_PHYSICAL_ADDRESS   DsdtAddress = 0;
     UINT32                  XsdtSize;
-    AE_TABLE_DESC           *NextTable;
+    ACPI_NEW_TABLE_DESC     *NextTable;
     UINT32                  NextIndex;
     ACPI_TABLE_FADT         *ExternalFadt = NULL;
 
@@ -190,18 +195,20 @@ AeBuildLocalTables (
      * For the FADT, this table is already accounted for since we usually
      * install a local FADT.
      */
-    NextTable = TableList;
+    NextTable = ListHead;
     while (NextTable)
     {
-        if (ACPI_COMPARE_NAME (NextTable->Table->Signature, ACPI_SIG_DSDT) ||
-            ACPI_COMPARE_NAME (NextTable->Table->Signature, ACPI_SIG_FADT))
+        if (!ACPI_COMPARE_NAMESEG (NextTable->Table->Signature, ACPI_SIG_DSDT) &&
+            !ACPI_COMPARE_NAMESEG (NextTable->Table->Signature, ACPI_SIG_FADT))
         {
-            TableCount--;
+            TableCount++;
         }
+
         NextTable = NextTable->Next;
     }
 
-    XsdtSize = (((TableCount + 1) * sizeof (UINT64)) + sizeof (ACPI_TABLE_HEADER));
+    XsdtSize = (((TableCount + 1) * sizeof (UINT64)) +
+        sizeof (ACPI_TABLE_HEADER));
     if (AcpiGbl_LoadTestTables)
     {
         XsdtSize += BASE_XSDT_SIZE;
@@ -216,26 +223,21 @@ AeBuildLocalTables (
     }
 
     memset (LocalXSDT, 0, XsdtSize);
-    AeInitializeTableHeader ((void *) LocalXSDT, ACPI_SIG_XSDT, XsdtSize);
-
     LocalXSDT->TableOffsetEntry[0] = ACPI_PTR_TO_PHYSADDR (&LocalFADT);
     NextIndex = 1;
 
     /*
      * Install the user tables. The DSDT must be installed in the FADT.
      * All other tables are installed directly into the XSDT.
-     *
-     * Note: The tables are loaded in reverse order from the incoming
-     * input, which makes it match the command line order.
      */
-    NextTable = TableList;
+    NextTable = ListHead;
     while (NextTable)
     {
         /*
          * Incoming DSDT or FADT are special cases. All other tables are
          * just immediately installed into the XSDT.
          */
-        if (ACPI_COMPARE_NAME (NextTable->Table->Signature, ACPI_SIG_DSDT))
+        if (ACPI_COMPARE_NAMESEG (NextTable->Table->Signature, ACPI_SIG_DSDT))
         {
             if (DsdtAddress)
             {
@@ -248,7 +250,7 @@ AeBuildLocalTables (
             DsdtAddress = ACPI_PTR_TO_PHYSADDR (NextTable->Table);
             DsdtToInstallOverride = NextTable->Table;
         }
-        else if (ACPI_COMPARE_NAME (NextTable->Table->Signature, ACPI_SIG_FADT))
+        else if (ACPI_COMPARE_NAMESEG (NextTable->Table->Signature, ACPI_SIG_FADT))
         {
             ExternalFadt = ACPI_CAST_PTR (ACPI_TABLE_FADT, NextTable->Table);
             LocalXSDT->TableOffsetEntry[0] = ACPI_PTR_TO_PHYSADDR (NextTable->Table);
@@ -257,7 +259,7 @@ AeBuildLocalTables (
         {
             /* Install the table in the XSDT */
 
-            LocalXSDT->TableOffsetEntry[TableCount - NextIndex + 1] =
+            LocalXSDT->TableOffsetEntry[NextIndex] =
                 ACPI_PTR_TO_PHYSADDR (NextTable->Table);
             NextIndex++;
         }
@@ -307,9 +309,7 @@ AeBuildLocalTables (
 
     /* Set checksums for both XSDT and RSDP */
 
-    LocalXSDT->Header.Checksum = 0;
-    LocalXSDT->Header.Checksum = (UINT8) -AcpiTbChecksum (
-        (void *) LocalXSDT, LocalXSDT->Header.Length);
+    AeInitializeTableHeader ((void *) LocalXSDT, ACPI_SIG_XSDT, XsdtSize);
 
     LocalRSDP.Checksum = 0;
     LocalRSDP.Checksum = (UINT8) -AcpiTbChecksum (
@@ -334,8 +334,8 @@ AeBuildLocalTables (
     if (ExternalFadt)
     {
         /*
-         * Use the external FADT, but we must update the DSDT/FACS addresses
-         * as well as the checksum
+         * Use the external FADT, but we must update the DSDT/FACS
+         * addresses as well as the checksum
          */
         ExternalFadt->Dsdt = (UINT32) DsdtAddress;
         if (!AcpiGbl_ReducedHardware)
@@ -343,19 +343,24 @@ AeBuildLocalTables (
             ExternalFadt->Facs = ACPI_PTR_TO_PHYSADDR (&LocalFACS);
         }
 
-        /* Is there room in the FADT for the XDsdst and XFacs 64-bit pointers? */
-
-        if (ExternalFadt->Header.Length > ACPI_PTR_DIFF (&ExternalFadt->XDsdt, ExternalFadt))
+        /*
+         * If there room in the FADT for the XDsdt and XFacs 64-bit
+         * pointers, use them.
+         */
+        if (ExternalFadt->Header.Length > ACPI_PTR_DIFF (
+            &ExternalFadt->XDsdt, ExternalFadt))
         {
-            ExternalFadt->XDsdt = DsdtAddress;
+            ExternalFadt->Dsdt = 0;
+            ExternalFadt->Facs = 0;
 
+            ExternalFadt->XDsdt = DsdtAddress;
             if (!AcpiGbl_ReducedHardware)
             {
                 ExternalFadt->XFacs = ACPI_PTR_TO_PHYSADDR (&LocalFACS);
             }
         }
 
-        /* Complete the FADT with the checksum */
+        /* Complete the external FADT with the checksum */
 
         ExternalFadt->Header.Checksum = 0;
         ExternalFadt->Header.Checksum = (UINT8) -AcpiTbChecksum (
@@ -364,12 +369,8 @@ AeBuildLocalTables (
     else if (AcpiGbl_UseHwReducedFadt)
     {
         memcpy (&LocalFADT, HwReducedFadtCode, ACPI_FADT_V5_SIZE);
-        LocalFADT.Dsdt = (UINT32) DsdtAddress;
+        LocalFADT.Dsdt = 0;
         LocalFADT.XDsdt = DsdtAddress;
-
-        LocalFADT.Header.Checksum = 0;
-        LocalFADT.Header.Checksum = (UINT8) -AcpiTbChecksum (
-            (void *) &LocalFADT, LocalFADT.Header.Length);
     }
     else
     {
@@ -377,7 +378,6 @@ AeBuildLocalTables (
          * Build a local FADT so we can test the hardware/event init
          */
         LocalFADT.Header.Revision = 5;
-        AeInitializeTableHeader ((void *) &LocalFADT, ACPI_SIG_FADT, sizeof (ACPI_TABLE_FADT));
 
         /* Setup FADT header and DSDT/FACS addresses */
 
@@ -389,12 +389,12 @@ AeBuildLocalTables (
 
         /* Miscellaneous FADT fields */
 
-        LocalFADT.Gpe0BlockLength = 0x08;
-        LocalFADT.Gpe0Block = 0x00001234;
+        LocalFADT.Gpe0BlockLength = 0x20;
+        LocalFADT.Gpe0Block = 0x00003210;
 
-        LocalFADT.Gpe1BlockLength = 0x80;
-        LocalFADT.Gpe1Block = 0x00005678;
-        LocalFADT.Gpe1Base = 100;
+        LocalFADT.Gpe1BlockLength = 0x20;
+        LocalFADT.Gpe1Block = 0x0000BA98;
+        LocalFADT.Gpe1Base = 0x80;
 
         LocalFADT.Pm1EventLength = 4;
         LocalFADT.Pm1aEventBlock = 0x00001aaa;
@@ -413,19 +413,17 @@ AeBuildLocalTables (
 
         LocalFADT.XPm1bEventBlock.SpaceId = ACPI_ADR_SPACE_SYSTEM_IO;
         LocalFADT.XPm1bEventBlock.Address = LocalFADT.Pm1bEventBlock;
-        LocalFADT.XPm1bEventBlock.BitWidth = (UINT8) ACPI_MUL_8 (LocalFADT.Pm1EventLength);
-
-        /* Complete the FADT with the checksum */
-
-        LocalFADT.Header.Checksum = 0;
-        LocalFADT.Header.Checksum = (UINT8) -AcpiTbChecksum (
-            (void *) &LocalFADT, LocalFADT.Header.Length);
+        LocalFADT.XPm1bEventBlock.BitWidth = (UINT8)
+            ACPI_MUL_8 (LocalFADT.Pm1EventLength);
     }
+
+    AeInitializeTableHeader ((void *) &LocalFADT,
+        ACPI_SIG_FADT, sizeof (ACPI_TABLE_FADT));
 
     /* Build a FACS */
 
     memset (&LocalFACS, 0, sizeof (ACPI_TABLE_FACS));
-    ACPI_MOVE_NAME (LocalFACS.Signature, ACPI_SIG_FACS);
+    ACPI_COPY_NAMESEG (LocalFACS.Signature, ACPI_SIG_FACS);
 
     LocalFACS.Length = sizeof (ACPI_TABLE_FACS);
     LocalFACS.GlobalLock = 0x11AA0011;
@@ -439,10 +437,12 @@ AeBuildLocalTables (
          * ACPICA core ignores it
          */
         memset (&LocalTEST, 0, sizeof (ACPI_TABLE_HEADER));
-        ACPI_MOVE_NAME (LocalTEST.Signature, "TEST");
+        ACPI_COPY_NAMESEG (LocalTEST.Signature, "TEST");
 
         LocalTEST.Revision = 1;
         LocalTEST.Length = sizeof (ACPI_TABLE_HEADER);
+
+        LocalTEST.Checksum = 0;
         LocalTEST.Checksum = (UINT8) -AcpiTbChecksum (
             (void *) &LocalTEST, LocalTEST.Length);
 
@@ -451,10 +451,12 @@ AeBuildLocalTables (
          * sure that the ACPICA core ignores it
          */
         memset (&LocalBADTABLE, 0, sizeof (ACPI_TABLE_HEADER));
-        ACPI_MOVE_NAME (LocalBADTABLE.Signature, "BAD!");
+        ACPI_COPY_NAMESEG (LocalBADTABLE.Signature, "BAD!");
 
         LocalBADTABLE.Revision = 1;
         LocalBADTABLE.Length = sizeof (ACPI_TABLE_HEADER);
+
+        LocalBADTABLE.Checksum = 0;
         LocalBADTABLE.Checksum = (UINT8) -AcpiTbChecksum (
             (void *) &LocalBADTABLE, LocalBADTABLE.Length);
     }
@@ -482,59 +484,93 @@ AeInstallTables (
     ACPI_STATUS             Status;
     ACPI_TABLE_HEADER       Header;
     ACPI_TABLE_HEADER       *Table;
+    UINT32                  i;
 
 
-    Status = AcpiInitializeTables (Tables, ACPI_MAX_INIT_TABLES, TRUE);
-    AE_CHECK_OK (AcpiInitializeTables, Status);
-
-    Status = AcpiReallocateRootTable ();
-    AE_CHECK_OK (AcpiReallocateRootTable, Status);
-
-    Status = AcpiLoadTables ();
-    AE_CHECK_OK (AcpiLoadTables, Status);
+    Status = AcpiInitializeTables (NULL, ACPI_MAX_INIT_TABLES, TRUE);
+    ACPI_CHECK_OK (AcpiInitializeTables, Status);
 
     /*
-     * Test run-time control method installation. Do it twice to test code
-     * for an existing name.
+     * The following code is prepared to test the deferred table
+     * verification mechanism. When AcpiGbl_EnableTableValidation is set
+     * to FALSE by default, AcpiReallocateRootTable() sets it back to TRUE
+     * and triggers the deferred table verification mechanism accordingly.
      */
-    Status = AcpiInstallMethod (MethodCode);
-    if (ACPI_FAILURE (Status))
-    {
-        AcpiOsPrintf ("%s, Could not install method\n",
-            AcpiFormatException (Status));
-    }
-
-    Status = AcpiInstallMethod (MethodCode);
-    if (ACPI_FAILURE (Status))
-    {
-        AcpiOsPrintf ("%s, Could not install method\n",
-            AcpiFormatException (Status));
-    }
+    (void) AcpiReallocateRootTable ();
 
     if (AcpiGbl_LoadTestTables)
     {
         /* Test multiple table/UEFI support. First, get the headers */
 
         Status = AcpiGetTableHeader (ACPI_SIG_UEFI, 1, &Header);
-        AE_CHECK_OK (AcpiGetTableHeader, Status);
+        ACPI_CHECK_OK (AcpiGetTableHeader, Status);
 
         Status = AcpiGetTableHeader (ACPI_SIG_UEFI, 2, &Header);
-        AE_CHECK_OK (AcpiGetTableHeader, Status);
+        ACPI_CHECK_OK (AcpiGetTableHeader, Status);
 
         Status = AcpiGetTableHeader (ACPI_SIG_UEFI, 3, &Header);
-        AE_CHECK_STATUS (AcpiGetTableHeader, Status, AE_NOT_FOUND);
+        ACPI_CHECK_STATUS (AcpiGetTableHeader, Status, AE_NOT_FOUND);
 
         /* Now get the actual tables */
 
         Status = AcpiGetTable (ACPI_SIG_UEFI, 1, &Table);
-        AE_CHECK_OK (AcpiGetTable, Status);
+        ACPI_CHECK_OK (AcpiGetTable, Status);
 
         Status = AcpiGetTable (ACPI_SIG_UEFI, 2, &Table);
-        AE_CHECK_OK (AcpiGetTable, Status);
+        ACPI_CHECK_OK (AcpiGetTable, Status);
 
         Status = AcpiGetTable (ACPI_SIG_UEFI, 3, &Table);
-        AE_CHECK_STATUS (AcpiGetTable, Status, AE_NOT_FOUND);
+        ACPI_CHECK_STATUS (AcpiGetTable, Status, AE_NOT_FOUND);
     }
+
+    /* Check that we can get all of the ACPI tables */
+
+    for (i = 0; ; i++)
+    {
+        Status = AcpiGetTableByIndex (i, &Table);
+        if ((Status == AE_BAD_PARAMETER) || !Table)
+        {
+            break;
+        }
+
+        ACPI_CHECK_OK (AcpiGetTableByIndex, Status);
+    }
+
+    return (AE_OK);
+}
+
+
+/******************************************************************************
+ *
+ * FUNCTION:    AeLoadTables
+ *
+ * PARAMETERS:  None
+ *
+ * RETURN:      Status
+ *
+ * DESCRIPTION: Load the definition block ACPI tables
+ *
+ *****************************************************************************/
+
+ACPI_STATUS
+AeLoadTables (
+    void)
+{
+    ACPI_STATUS             Status;
+
+
+    Status = AcpiLoadTables ();
+    ACPI_CHECK_OK (AcpiLoadTables, Status);
+
+    /*
+     * Test run-time control method installation. Do it twice to test code
+     * for an existing name.
+     */
+    Status = AcpiInstallMethod (MethodCode);
+    ACPI_CHECK_OK (AcpiInstallMethod, Status);
+
+    Status = AcpiInstallMethod (MethodCode);
+    ACPI_CHECK_OK (AcpiInstallMethod, Status);
 
     return (AE_OK);
 }

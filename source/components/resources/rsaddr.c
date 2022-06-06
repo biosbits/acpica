@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -328,30 +328,35 @@ AcpiRsGetAddressCommon (
 
     /* Validate the Resource Type */
 
-    if ((Aml->Address.ResourceType > 2) && (Aml->Address.ResourceType < 0xC0))
+    if ((Aml->Address.ResourceType > 2) &&
+        (Aml->Address.ResourceType < 0xC0))
     {
         return (FALSE);
     }
 
     /* Get the Resource Type and General Flags */
 
-    (void) AcpiRsConvertAmlToResource (Resource, Aml, AcpiRsConvertGeneralFlags);
+    (void) AcpiRsConvertAmlToResource (
+        Resource, Aml, AcpiRsConvertGeneralFlags);
 
     /* Get the Type-Specific Flags (Memory and I/O descriptors only) */
 
     if (Resource->Data.Address.ResourceType == ACPI_MEMORY_RANGE)
     {
-        (void) AcpiRsConvertAmlToResource (Resource, Aml, AcpiRsConvertMemFlags);
+        (void) AcpiRsConvertAmlToResource (
+            Resource, Aml, AcpiRsConvertMemFlags);
     }
     else if (Resource->Data.Address.ResourceType == ACPI_IO_RANGE)
     {
-        (void) AcpiRsConvertAmlToResource (Resource, Aml, AcpiRsConvertIoFlags);
+        (void) AcpiRsConvertAmlToResource (
+            Resource, Aml, AcpiRsConvertIoFlags);
     }
     else
     {
         /* Generic resource type, just grab the TypeSpecific byte */
 
-        Resource->Data.Address.Info.TypeSpecific = Aml->Address.SpecificFlags;
+        Resource->Data.Address.Info.TypeSpecific =
+            Aml->Address.SpecificFlags;
     }
 
     return (TRUE);
@@ -382,22 +387,26 @@ AcpiRsSetAddressCommon (
 
     /* Set the Resource Type and General Flags */
 
-    (void) AcpiRsConvertResourceToAml (Resource, Aml, AcpiRsConvertGeneralFlags);
+    (void) AcpiRsConvertResourceToAml (
+        Resource, Aml, AcpiRsConvertGeneralFlags);
 
     /* Set the Type-Specific Flags (Memory and I/O descriptors only) */
 
     if (Resource->Data.Address.ResourceType == ACPI_MEMORY_RANGE)
     {
-        (void) AcpiRsConvertResourceToAml (Resource, Aml, AcpiRsConvertMemFlags);
+        (void) AcpiRsConvertResourceToAml (
+            Resource, Aml, AcpiRsConvertMemFlags);
     }
     else if (Resource->Data.Address.ResourceType == ACPI_IO_RANGE)
     {
-        (void) AcpiRsConvertResourceToAml (Resource, Aml, AcpiRsConvertIoFlags);
+        (void) AcpiRsConvertResourceToAml (
+            Resource, Aml, AcpiRsConvertIoFlags);
     }
     else
     {
         /* Generic resource type, just copy the TypeSpecific byte */
 
-        Aml->Address.SpecificFlags = Resource->Data.Address.Info.TypeSpecific;
+        Aml->Address.SpecificFlags =
+            Resource->Data.Address.Info.TypeSpecific;
     }
 }

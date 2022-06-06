@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -52,7 +52,7 @@
 
 /* Local prototypes */
 
-static void
+static ACPI_PARSE_OBJECT *
 ApCheckPackageElements (
     const char                  *PredefinedName,
     ACPI_PARSE_OBJECT           *Op,
@@ -87,6 +87,11 @@ ApPackageTooLarge (
     ACPI_PARSE_OBJECT           *Op,
     UINT32                      Count,
     UINT32                      ExpectedCount);
+
+static void
+ApCustomPackage (
+    ACPI_PARSE_OBJECT           *ParentOp,
+    const ACPI_PREDEFINED_INFO  *Predefined);
 
 
 /*******************************************************************************
@@ -168,6 +173,11 @@ ApCheckPackage (
 
     switch (Package->RetInfo.Type)
     {
+    case ACPI_PTYPE_CUSTOM:
+
+        ApCustomPackage (ParentOp, Predefined);
+        break;
+
     case ACPI_PTYPE1_FIXED:
         /*
          * The package count is fixed and there are no subpackages
@@ -200,6 +210,17 @@ ApCheckPackage (
          */
         for (i = 0; i < Count; i++)
         {
+            if (!Op)
+            {
+                /*
+                 * If we get to this point, it means that the package length
+                 * is larger than the initializer list. Stop processing the
+                 * package and return because we have run out of package
+                 * elements to analyze.
+                 */
+                return;
+            }
+
             ApCheckObjectType (Predefined->Info.Name, Op,
                 Package->RetInfo.ObjectType1, i);
             Op = Op->Asl.Next;
@@ -238,6 +259,7 @@ ApCheckPackage (
                 ApCheckObjectType (Predefined->Info.Name, Op,
                     Package->RetInfo3.TailObjectType, i);
             }
+
             Op = Op->Asl.Next;
         }
         break;
@@ -298,11 +320,11 @@ ApCheckPackage (
 
         if (Count & 1)
         {
-            sprintf (MsgBuffer, "%4.4s: Package length, %d, must be even.",
+            sprintf (AslGbl_MsgBuffer, "%4.4s: Package length, %d, must be even.",
                 Predefined->Info.Name, Count);
 
             AslError (ASL_ERROR, ASL_MSG_RESERVED_PACKAGE_LENGTH,
-                ParentOp->Asl.Child, MsgBuffer);
+                ParentOp->Asl.Child, AslGbl_MsgBuffer);
         }
 
         /* Validate the alternating types */
@@ -339,7 +361,7 @@ ApCheckPackage (
 
         for (i = 0; i < Package->RetInfo4.Count1; ++i)
         {
-            Status = ApCheckObjectType (Predefined->Info.Name, Op,
+            ApCheckObjectType (Predefined->Info.Name, Op,
                 Package->RetInfo4.ObjectType1, i);
             Op = Op->Asl.Next;
         }
@@ -381,6 +403,86 @@ PackageTooSmall:
 
 /*******************************************************************************
  *
+ * FUNCTION:    ApCustomPackage
+ *
+ * PARAMETERS:  ParentOp            - Parse op for the package
+ *              Predefined          - Pointer to package-specific info for
+ *                                    the method
+ *
+ * RETURN:      None
+ *
+ * DESCRIPTION: Validate packages that don't fit into the standard model and
+ *              require custom code.
+ *
+ * NOTE: Currently used for the _BIX method only. When needed for two or more
+ * methods, probably a detect/dispatch mechanism will be required.
+ *
+ ******************************************************************************/
+
+static void
+ApCustomPackage (
+    ACPI_PARSE_OBJECT           *ParentOp,
+    const ACPI_PREDEFINED_INFO  *Predefined)
+{
+    ACPI_PARSE_OBJECT           *Op;
+    UINT32                      Count;
+    UINT32                      ExpectedCount;
+    UINT32                      Version;
+
+
+    /* First child is the package length */
+
+    Op = ParentOp->Asl.Child;
+    Count = (UINT32) Op->Asl.Value.Integer;
+
+    /* Get the version number, must be Integer */
+
+    Op = Op->Asl.Next;
+    Version = (UINT32) Op->Asl.Value.Integer;
+    if (Op->Asl.ParseOpcode != PARSEOP_INTEGER)
+    {
+        AslError (ASL_ERROR, ASL_MSG_RESERVED_OPERAND_TYPE, Op, AslGbl_MsgBuffer);
+        return;
+    }
+
+    /* Validate count (# of elements) */
+
+    ExpectedCount = 21;         /* Version 1 */
+    if (Version == 0)
+    {
+        ExpectedCount = 20;     /* Version 0 */
+    }
+
+    if (Count < ExpectedCount)
+    {
+        ApPackageTooSmall (Predefined->Info.Name, ParentOp,
+            Count, ExpectedCount);
+        return;
+    }
+    else if (Count > ExpectedCount)
+    {
+        ApPackageTooLarge (Predefined->Info.Name, ParentOp,
+            Count, ExpectedCount);
+    }
+
+    /* Validate all elements of the package */
+
+    Op = ApCheckPackageElements (Predefined->Info.Name, Op,
+        ACPI_RTYPE_INTEGER, 16,
+        ACPI_RTYPE_STRING, 4);
+
+    /* Version 1 has a single trailing integer */
+
+    if (Version > 0)
+    {
+        ApCheckPackageElements (Predefined->Info.Name, Op,
+            ACPI_RTYPE_INTEGER, 1, 0, 0);
+    }
+}
+
+
+/*******************************************************************************
+ *
  * FUNCTION:    ApCheckPackageElements
  *
  * PARAMETERS:  PredefinedName      - Name of the predefined object
@@ -390,7 +492,9 @@ PackageTooSmall:
  *              Type2               - Object type for second group
  *              Count2              - Count for second group
  *
- * RETURN:      None
+ * RETURN:      Next Op peer in the parse tree, after all specified elements
+ *              have been validated. Used for multiple validations (calls
+ *              to this function).
  *
  * DESCRIPTION: Validate all elements of a package. Works with packages that
  *              are defined to contain up to two groups of different object
@@ -398,7 +502,7 @@ PackageTooSmall:
  *
  ******************************************************************************/
 
-static void
+static ACPI_PARSE_OBJECT *
 ApCheckPackageElements (
     const char              *PredefinedName,
     ACPI_PARSE_OBJECT       *Op,
@@ -430,6 +534,8 @@ ApCheckPackageElements (
         ApCheckObjectType (PredefinedName, Op, Type2, (i + Count1));
         Op = Op->Asl.Next;
     }
+
+    return (Op);
 }
 
 
@@ -714,10 +820,10 @@ ApPackageTooSmall (
     UINT32                      ExpectedCount)
 {
 
-    sprintf (MsgBuffer, "%s: length %u, required minimum is %u",
+    sprintf (AslGbl_MsgBuffer, "%4.4s: length %u, required minimum is %u",
         PredefinedName, Count, ExpectedCount);
 
-    AslError (ASL_ERROR, ASL_MSG_RESERVED_PACKAGE_LENGTH, Op, MsgBuffer);
+    AslError (ASL_ERROR, ASL_MSG_RESERVED_PACKAGE_LENGTH, Op, AslGbl_MsgBuffer);
 }
 
 
@@ -743,9 +849,9 @@ ApZeroLengthPackage (
     ACPI_PARSE_OBJECT           *Op)
 {
 
-    sprintf (MsgBuffer, "%s: length is zero", PredefinedName);
+    sprintf (AslGbl_MsgBuffer, "%4.4s: length is zero", PredefinedName);
 
-    AslError (ASL_ERROR, ASL_MSG_RESERVED_PACKAGE_LENGTH, Op, MsgBuffer);
+    AslError (ASL_ERROR, ASL_MSG_RESERVED_PACKAGE_LENGTH, Op, AslGbl_MsgBuffer);
 }
 
 
@@ -772,8 +878,8 @@ ApPackageTooLarge (
     UINT32                      ExpectedCount)
 {
 
-    sprintf (MsgBuffer, "%s: length is %u, only %u required",
+    sprintf (AslGbl_MsgBuffer, "%4.4s: length is %u, only %u required",
         PredefinedName, Count, ExpectedCount);
 
-    AslError (ASL_REMARK, ASL_MSG_RESERVED_PACKAGE_LENGTH, Op, MsgBuffer);
+    AslError (ASL_REMARK, ASL_MSG_RESERVED_PACKAGE_LENGTH, Op, AslGbl_MsgBuffer);
 }

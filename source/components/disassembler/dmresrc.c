@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -46,7 +46,6 @@
 #include "amlcode.h"
 #include "acdisasm.h"
 
-#ifdef ACPI_DISASSEMBLER
 
 #define _COMPONENT          ACPI_CA_DEBUGGER
         ACPI_MODULE_NAME    ("dbresrc")
@@ -90,8 +89,12 @@ static ACPI_RESOURCE_HANDLER    AcpiGbl_DmResourceDispatch [] =
     AcpiDmQwordDescriptor,          /* 0x0A, ACPI_RESOURCE_NAME_QWORD_ADDRESS_SPACE */
     AcpiDmExtendedDescriptor,       /* 0x0B, ACPI_RESOURCE_NAME_EXTENDED_ADDRESS_SPACE */
     AcpiDmGpioDescriptor,           /* 0x0C, ACPI_RESOURCE_NAME_GPIO */
-    NULL,                           /* 0x0D, Reserved */
-    AcpiDmSerialBusDescriptor       /* 0x0E, ACPI_RESOURCE_NAME_SERIAL_BUS */
+    AcpiDmPinFunctionDescriptor,    /* 0x0D, ACPI_RESOURCE_NAME_PIN_FUNCTION */
+    AcpiDmSerialBusDescriptor,      /* 0x0E, ACPI_RESOURCE_NAME_SERIAL_BUS */
+    AcpiDmPinConfigDescriptor,      /* 0x0F, ACPI_RESOURCE_NAME_PIN_CONFIG */
+    AcpiDmPinGroupDescriptor,       /* 0x10, ACPI_RESOURCE_NAME_PIN_GROUP */
+    AcpiDmPinGroupFunctionDescriptor, /* 0x11, ACPI_RESOURCE_NAME_PIN_GROUP_FUNCTION */
+    AcpiDmPinGroupConfigDescriptor, /* 0x12, ACPI_RESOURCE_NAME_PIN_GROUP_CONFIG */
 };
 
 
@@ -146,7 +149,7 @@ AcpiDmDescriptorName (
 void
 AcpiDmDumpInteger8 (
     UINT8                   Value,
-    char                    *Name)
+    const char              *Name)
 {
     AcpiOsPrintf ("0x%2.2X,               // %s\n", Value, Name);
 }
@@ -154,7 +157,7 @@ AcpiDmDumpInteger8 (
 void
 AcpiDmDumpInteger16 (
     UINT16                  Value,
-    char                    *Name)
+    const char              *Name)
 {
     AcpiOsPrintf ("0x%4.4X,             // %s\n", Value, Name);
 }
@@ -162,7 +165,7 @@ AcpiDmDumpInteger16 (
 void
 AcpiDmDumpInteger32 (
     UINT32                  Value,
-    char                    *Name)
+    const char              *Name)
 {
     AcpiOsPrintf ("0x%8.8X,         // %s\n", Value, Name);
 }
@@ -170,7 +173,7 @@ AcpiDmDumpInteger32 (
 void
 AcpiDmDumpInteger64 (
     UINT64                  Value,
-    char                    *Name)
+    const char              *Name)
 {
     AcpiOsPrintf ("0x%8.8X%8.8X, // %s\n", ACPI_FORMAT_UINT64 (Value), Name);
 }
@@ -213,6 +216,7 @@ AcpiDmBitList (
             {
                 AcpiOsPrintf (",");
             }
+
             Previous = TRUE;
             AcpiOsPrintf ("%u", i);
         }
@@ -230,7 +234,7 @@ AcpiDmBitList (
  *
  * FUNCTION:    AcpiDmResourceTemplate
  *
- * PARAMETERS:  Info            - Curent parse tree walk info
+ * PARAMETERS:  Info            - Current parse tree walk info
  *              ByteData        - Pointer to the byte list data
  *              ByteCount       - Length of the byte list
  *
@@ -286,7 +290,8 @@ AcpiDmResourceTemplate (
         Status = AcpiUtValidateResource (NULL, Aml, &ResourceIndex);
         if (ACPI_FAILURE (Status))
         {
-            AcpiOsPrintf ("/*** Could not validate Resource, type (%X) %s***/\n",
+            AcpiOsPrintf (
+                "/*** Could not validate Resource, type (%X) %s***/\n",
                 ResourceType, AcpiFormatException (Status));
             return;
         }
@@ -328,7 +333,6 @@ AcpiDmResourceTemplate (
                  * missing EndDependentDescriptor.
                  */
                 Level--;
-                DependentFns = FALSE;
 
                 /* Go ahead and insert EndDependentFn() */
 
@@ -336,7 +340,8 @@ AcpiDmResourceTemplate (
 
                 AcpiDmIndent (Level);
                 AcpiOsPrintf (
-                    "/*** Disassembler: inserted missing EndDependentFn () ***/\n");
+                    "/*** Disassembler: inserted "
+                    "missing EndDependentFn () ***/\n");
             }
             return;
 
@@ -390,7 +395,8 @@ AcpiDmIsResourceTemplate (
     ACPI_PARSE_OBJECT       *NextOp;
     UINT8                   *Aml;
     UINT8                   *EndAml;
-    ACPI_SIZE               Length;
+    UINT32                  BufferLength;
+    UINT32                  DeclaredBufferLength;
 
 
     /* This op must be a buffer */
@@ -400,14 +406,20 @@ AcpiDmIsResourceTemplate (
         return (AE_TYPE);
     }
 
-    /* Get the ByteData list and length */
-
+    /*
+     * Get the declared length of the buffer.
+     * This is the nn in "Buffer (nn)"
+     */
     NextOp = Op->Common.Value.Arg;
     if (!NextOp)
     {
         AcpiOsPrintf ("NULL byte list in buffer\n");
         return (AE_TYPE);
     }
+
+    DeclaredBufferLength = NextOp->Common.Value.Size;
+
+    /* Get the length of the raw initialization byte list */
 
     NextOp = NextOp->Common.Next;
     if (!NextOp)
@@ -416,11 +428,45 @@ AcpiDmIsResourceTemplate (
     }
 
     Aml = NextOp->Named.Data;
-    Length = (ACPI_SIZE) NextOp->Common.Value.Integer;
+    BufferLength = NextOp->Common.Value.Size;
+
+    /*
+     * Any buffer smaller than one byte cannot possibly be a resource
+     * template. Two bytes could possibly be a "NULL" resource template
+     * with a lone end tag descriptor (as generated via
+     * "ResourceTemplate(){}"), but this would be an extremely unusual
+     * case, as the template would be essentially useless. The disassembler
+     * therefore does not recognize any two-byte buffer as a resource
+     * template.
+     */
+    if (BufferLength <= 2)
+    {
+        return (AE_TYPE);
+    }
+
+    /*
+     * Not a template if declared buffer length != actual length of the
+     * initialization byte list. Because the resource macros will create
+     * a buffer of the exact required length (buffer length will be equal
+     * to the actual length).
+     *
+     * NOTE (April 2017): Resource templates with this issue have been
+     * seen in the field. We still don't want to attempt to disassemble
+     * a buffer like this to a resource template because this output
+     * would not match the original input buffer (it would be shorter
+     * than the original when the disassembled code is recompiled).
+     * Basically, a buffer like this appears to be hand crafted in the
+     * first place, so just emitting a buffer object instead of a
+     * resource template more closely resembles the original ASL code.
+     */
+    if (DeclaredBufferLength != BufferLength)
+    {
+        return (AE_TYPE);
+    }
 
     /* Walk the byte list, abort on any invalid descriptor type or length */
 
-    Status = AcpiUtWalkAmlResources (WalkState, Aml, Length,
+    Status = AcpiUtWalkAmlResources (WalkState, Aml, BufferLength,
         NULL, ACPI_CAST_INDIRECT_PTR (void, &EndAml));
     if (ACPI_FAILURE (Status))
     {
@@ -433,7 +479,7 @@ AcpiDmIsResourceTemplate (
      * of a ResourceTemplate, the buffer must not have any extra data after
      * the EndTag.)
      */
-    if ((Aml + Length - sizeof (AML_RESOURCE_END_TAG)) != EndAml)
+    if ((Aml + BufferLength - sizeof (AML_RESOURCE_END_TAG)) != EndAml)
     {
         return (AE_AML_NO_RESOURCE_END_TAG);
     }
@@ -444,5 +490,3 @@ AcpiDmIsResourceTemplate (
      */
     return (AE_OK);
 }
-
-#endif

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -77,7 +77,6 @@ AsRemoveStatement (
     KeywordLength = strlen (Keyword);
     SubBuffer = Buffer;
     SubString = Buffer;
-
 
     while (SubString)
     {
@@ -157,9 +156,7 @@ AsRemoveConditionalCompile (
 
 
     KeywordLength = strlen (Keyword);
-    SubBuffer = Buffer;
     SubString = Buffer;
-
 
     while (SubString)
     {
@@ -225,6 +222,7 @@ AsRemoveConditionalCompile (
         {
             SubString--;
         }
+
         SubString++;
 
         /* Find the "#ifxxxx" */
@@ -294,7 +292,7 @@ AsRemoveConditionalCompile (
 
         /* Remove the lines */
 
-        SubBuffer = AsRemoveData (SubString, SubBuffer);
+        (void) AsRemoveData (SubString, SubBuffer);
     }
 }
 
@@ -326,7 +324,6 @@ AsRemoveMacro (
 
     SubBuffer = Buffer;
     SubString = Buffer;
-
 
     while (SubString)
     {
@@ -397,7 +394,6 @@ AsRemoveLine (
     SubBuffer = Buffer;
     SubString = Buffer;
 
-
     while (SubString)
     {
         SubString = strstr (SubBuffer, Keyword);
@@ -445,12 +441,12 @@ AsReduceTypedefs (
 {
     char                    *SubString;
     char                    *SubBuffer;
+    char                    *SubSubString;
     int                     NestLevel;
 
 
     SubBuffer = Buffer;
     SubString = Buffer;
-
 
     while (SubString)
     {
@@ -458,56 +454,89 @@ AsReduceTypedefs (
 
         if (SubString)
         {
-            /* Remove the typedef itself */
+            SubSubString = SubString + strlen (Keyword);
 
-            SubBuffer = SubString + strlen ("typedef") + 1;
-            SubBuffer = AsRemoveData (SubString, SubBuffer);
+            /* skip spaces */
 
-            /* Find the opening brace of the struct or union */
-
-            while (*SubString != '{')
+            while (strchr(" \t\r\n", *SubSubString))
             {
+                SubSubString++;
+            }
+
+            /* skip type name */
+
+            while (!strchr(" \t\r\n", *SubSubString))
+            {
+                SubSubString++;
+            }
+
+            /* skip spaces */
+
+            while (strchr(" \t\r\n", *SubSubString))
+            {
+                SubSubString++;
+            }
+
+            if (*SubSubString == '{')
+            {
+                /* Remove the typedef itself */
+
+                SubBuffer = SubString + strlen ("typedef") + 1;
+                (void) AsRemoveData (SubString, SubBuffer);
+
+                /* Find the opening brace of the struct or union */
+
+                while (*SubString != '{')
+                {
+                    SubString++;
+                }
                 SubString++;
+
+                /* Find the closing brace. Handles nested braces */
+
+                NestLevel = 1;
+                while (*SubString)
+                {
+                    if (*SubString == '{')
+                    {
+                        NestLevel++;
+                    }
+                    else if (*SubString == '}')
+                    {
+                        NestLevel--;
+                    }
+
+                    SubString++;
+
+                    if (NestLevel == 0)
+                    {
+                        break;
+                    }
+                }
+
+                /* Remove an extra line feed if present */
+
+                if (!strncmp (SubString - 3, "\n\n", 2))
+                {
+                    *(SubString -2) = '}';
+                    SubString--;
+                }
+
+                /* Find the end of the typedef name */
+
+                SubBuffer = AsSkipUntilChar (SubString, ';');
+
+                /* And remove the typedef name */
+
+                SubBuffer = AsRemoveData (SubString, SubBuffer);
             }
-            SubString++;
-
-            /* Find the closing brace. Handles nested braces */
-
-            NestLevel = 1;
-            while (*SubString)
+            else
             {
-                if (*SubString == '{')
-                {
-                    NestLevel++;
-                }
-                else if (*SubString == '}')
-                {
-                    NestLevel--;
-                }
+                /* Skip the entire definition */
 
-                SubString++;
-
-                if (NestLevel == 0)
-                {
-                    break;
-                }
+                SubString = strchr (SubString, ';') + 1;
+                SubBuffer = SubString;
             }
-
-            /* Remove an extra line feed if present */
-
-            if (!strncmp (SubString - 3, "\n\n", 2))
-            {
-                *(SubString -2) = '}';
-                SubString--;
-            }
-
-            /* Find the end of the typedef name */
-
-            SubBuffer = AsSkipUntilChar (SubString, ';');
-
-            /* And remove the typedef name */
-
-            SubBuffer = AsRemoveData (SubString, SubBuffer);
         }
     }
 }
@@ -555,6 +584,7 @@ AsRemoveEmptyBlocks (
                         EmptyBlock = FALSE;
                         break;
                     }
+
                     SubBuffer++;
                 }
 
@@ -620,6 +650,7 @@ AsRemoveDebugMacros (
 
     AsReplaceString ("return_VOID",         "return", REPLACE_WHOLE_WORD, Buffer);
     AsReplaceString ("return_PTR",          "return", REPLACE_WHOLE_WORD, Buffer);
+    AsReplaceString ("return_STR",          "return", REPLACE_WHOLE_WORD, Buffer);
     AsReplaceString ("return_ACPI_STATUS",  "return", REPLACE_WHOLE_WORD, Buffer);
     AsReplaceString ("return_acpi_status",  "return", REPLACE_WHOLE_WORD, Buffer);
     AsReplaceString ("return_VALUE",        "return", REPLACE_WHOLE_WORD, Buffer);
@@ -664,6 +695,7 @@ AsCleanupSpecialMacro (
             {
                 SubString++;
             }
+
             SubString++;
 
             NestLevel = 1;
@@ -697,6 +729,7 @@ SkipLine:
                 {
                     NewLine = TRUE;
                 }
+
                 SubString++;
             }
 

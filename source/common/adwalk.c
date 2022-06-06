@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -100,11 +100,16 @@ AcpiDmInspectPossibleArgs (
     ACPI_PARSE_OBJECT       *Op);
 
 static ACPI_STATUS
-AcpiDmResourceDescendingOp (
+AcpiDmCommonDescendingOp (
     ACPI_PARSE_OBJECT       *Op,
     UINT32                  Level,
     void                    *Context);
 
+static ACPI_STATUS
+AcpiDmProcessResourceDescriptors (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level,
+    void                    *Context);
 
 /*******************************************************************************
  *
@@ -135,6 +140,7 @@ AcpiDmDumpTree (
     Info.Count = 0;
     Info.Level = 0;
     Info.WalkState = NULL;
+
     AcpiDmWalkParseTree (Origin, AcpiDmDumpDescending, NULL, &Info);
     AcpiOsPrintf ("*/\n\n");
 }
@@ -168,6 +174,7 @@ AcpiDmFindOrphanMethods (
     Info.Flags = 0;
     Info.Level = 0;
     Info.WalkState = NULL;
+
     AcpiDmWalkParseTree (Origin, AcpiDmFindOrphanDescending, NULL, &Info);
 }
 
@@ -211,7 +218,8 @@ AcpiDmFinishNamespaceLoad (
         return;
     }
 
-    Status = AcpiDsScopeStackPush (NamespaceRoot, NamespaceRoot->Type, WalkState);
+    Status = AcpiDsScopeStackPush (NamespaceRoot, NamespaceRoot->Type,
+        WalkState);
     if (ACPI_FAILURE (Status))
     {
         return;
@@ -220,6 +228,7 @@ AcpiDmFinishNamespaceLoad (
     Info.Flags = 0;
     Info.Level = 0;
     Info.WalkState = WalkState;
+
     AcpiDmWalkParseTree (ParseTreeRoot, AcpiDmLoadDescendingOp,
         AcpiDmCommonAscendingOp, &Info);
     ACPI_FREE (WalkState);
@@ -264,7 +273,8 @@ AcpiDmCrossReferenceNamespace (
         return;
     }
 
-    Status = AcpiDsScopeStackPush (NamespaceRoot, NamespaceRoot->Type, WalkState);
+    Status = AcpiDsScopeStackPush (NamespaceRoot, NamespaceRoot->Type,
+        WalkState);
     if (ACPI_FAILURE (Status))
     {
         return;
@@ -273,6 +283,7 @@ AcpiDmCrossReferenceNamespace (
     Info.Flags = 0;
     Info.Level = 0;
     Info.WalkState = WalkState;
+
     AcpiDmWalkParseTree (ParseTreeRoot, AcpiDmXrefDescendingOp,
         AcpiDmCommonAscendingOp, &Info);
     ACPI_FREE (WalkState);
@@ -281,21 +292,21 @@ AcpiDmCrossReferenceNamespace (
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiDmConvertResourceIndexes
+ * FUNCTION:    AcpiDmConvertParseObjects
  *
  * PARAMETERS:  ParseTreeRoot       - Root of the parse tree
  *              NamespaceRoot       - Root of the internal namespace
  *
  * RETURN:      None
  *
- * DESCRIPTION: Convert fixed-offset references to resource descriptors to
- *              symbolic references. Should only be called after namespace has
- *              been cross referenced.
+ * DESCRIPTION: Begin parse tree walk to perform conversions needed for
+ *              disassembly. These include resource descriptors and switch/case
+ *              operations.
  *
  ******************************************************************************/
 
 void
-AcpiDmConvertResourceIndexes (
+AcpiDmConvertParseObjects (
     ACPI_PARSE_OBJECT       *ParseTreeRoot,
     ACPI_NAMESPACE_NODE     *NamespaceRoot)
 {
@@ -317,18 +328,26 @@ AcpiDmConvertResourceIndexes (
         return;
     }
 
-    Status = AcpiDsScopeStackPush (NamespaceRoot, NamespaceRoot->Type, WalkState);
+    Status = AcpiDsScopeStackPush (NamespaceRoot, NamespaceRoot->Type,
+        WalkState);
     if (ACPI_FAILURE (Status))
     {
+        ACPI_FREE (WalkState);
         return;
     }
 
     Info.Flags = 0;
     Info.Level = 0;
     Info.WalkState = WalkState;
-    AcpiDmWalkParseTree (ParseTreeRoot, AcpiDmResourceDescendingOp,
+
+    AcpiDmWalkParseTree (ParseTreeRoot, AcpiDmCommonDescendingOp,
         AcpiDmCommonAscendingOp, &Info);
     ACPI_FREE (WalkState);
+
+    if (AcpiGbl_TempListHead) {
+        AcpiDmClearTempList();
+    }
+
     return;
 }
 
@@ -353,6 +372,7 @@ AcpiDmDumpDescending (
 {
     ACPI_OP_WALK_INFO       *Info = Context;
     char                    *Path;
+    ACPI_STATUS             Status;
 
 
     if (!Op)
@@ -395,10 +415,18 @@ AcpiDmDumpDescending (
 
         if (Op->Common.Value.String)
         {
-            AcpiNsExternalizeName (ACPI_UINT32_MAX, Op->Common.Value.String,
-                            NULL, &Path);
-            AcpiOsPrintf ("%s %p", Path, Op->Common.Node);
-            ACPI_FREE (Path);
+            Status = AcpiNsExternalizeName (ACPI_UINT32_MAX, Op->Common.Value.String,
+                NULL, &Path);
+            if (ACPI_SUCCESS (Status))
+            {
+                AcpiOsPrintf ("%s %p", Path, Op->Common.Node);
+                ACPI_FREE (Path);
+            }
+            else
+            {
+                AcpiOsPrintf ("Could not externalize pathname for node [%4.4s]",
+                    Op->Common.Node->Name.Ascii);
+            }
         }
         else
         {
@@ -409,10 +437,19 @@ AcpiDmDumpDescending (
     case AML_NAME_OP:
     case AML_METHOD_OP:
     case AML_DEVICE_OP:
+
+        AcpiOsPrintf ("%4.4s",
+            ACPI_CAST_PTR (char, &Op->Named.Name));
+        break;
+
     case AML_INT_NAMEDFIELD_OP:
 
-        AcpiOsPrintf ("%4.4s", ACPI_CAST_PTR (char, &Op->Named.Name));
+        AcpiOsPrintf ("%4.4s Length: (bits) %8.8X%8.8X (bytes) %8.8X%8.8X",
+            ACPI_CAST_PTR (char, &Op->Named.Name),
+            ACPI_FORMAT_UINT64 (Op->Common.Value.Integer),
+            ACPI_FORMAT_UINT64 (Op->Common.Value.Integer / 8));
         break;
+
 
     default:
 
@@ -434,7 +471,7 @@ AcpiDmDumpDescending (
  *
  * DESCRIPTION: Check namepath Ops for orphaned method invocations
  *
- * Note: Experimental.
+ * Note: Parts of this are experimental, under possible further development.
  *
  ******************************************************************************/
 
@@ -456,7 +493,9 @@ AcpiDmFindOrphanDescending (
         return (AE_OK);
     }
 
+#ifdef ACPI_UNDER_DEVELOPMENT
     OpInfo = AcpiPsGetOpcodeInfo (Op->Common.AmlOpcode);
+#endif
 
     switch (Op->Common.AmlOpcode)
     {
@@ -500,6 +539,7 @@ AcpiDmFindOrphanDescending (
                 ChildOp->Common.Value.String, ACPI_TYPE_METHOD, ArgCount, 0);
         }
         break;
+
 #endif
 
     case AML_STORE_OP:
@@ -524,7 +564,7 @@ AcpiDmFindOrphanDescending (
                 /* One Arg means this is just a Store(Name,Target) */
 
                 AcpiDmAddOpToExternalList (ChildOp,
-                    ChildOp->Common.Value.String, ACPI_TYPE_INTEGER, 0, 0);
+                    ChildOp->Common.Value.String, ACPI_TYPE_INTEGER, ArgCount, 0);
                 return (AE_OK);
             }
 
@@ -546,7 +586,7 @@ AcpiDmFindOrphanDescending (
             (ParentOp->Common.AmlOpcode != AML_INT_METHODCALL_OP) &&
             !Op->Common.Node)
         {
-            ArgCount = AcpiDmInspectPossibleArgs (0, 0, Op->Common.Next);
+            ArgCount = AcpiDmInspectPossibleArgs (0, 0, Op);
 
             /*
              * Check if namepath is a predicate for if/while or lone parameter to
@@ -619,7 +659,6 @@ AcpiDmLoadDescendingOp (
 
     WalkState = Info->WalkState;
     OpInfo = AcpiPsGetOpcodeInfo (Op->Common.AmlOpcode);
-    ObjectType = OpInfo->ObjectType;
     ObjectType = AslMapNamedOpcodeToDataType (Op->Asl.AmlOpcode);
 
     /* Only interested in operators that create new names */
@@ -636,7 +675,7 @@ AcpiDmLoadDescendingOp (
     {
         /* For all named operators, get the new name */
 
-        Path = (char *) Op->Named.Path;
+        Path = Op->Named.Path;
 
         if (!Path && Op->Common.AmlOpcode == AML_INT_NAMEDFIELD_OP)
         {
@@ -655,6 +694,7 @@ AcpiDmLoadDescendingOp (
         {
             NextOp = NextOp->Common.Next;
         }
+
         Path = NextOp->Common.Value.String;
     }
 
@@ -666,8 +706,8 @@ AcpiDmLoadDescendingOp (
     /* Insert the name into the namespace */
 
     Status = AcpiNsLookup (WalkState->ScopeInfo, Path, ObjectType,
-                ACPI_IMODE_LOAD_PASS2, ACPI_NS_DONT_OPEN_SCOPE,
-                WalkState, &Node);
+        ACPI_IMODE_LOAD_PASS2, ACPI_NS_DONT_OPEN_SCOPE,
+        WalkState, &Node);
 
     Op->Common.Node = Node;
 
@@ -677,7 +717,7 @@ AcpiDmLoadDescendingOp (
 
         while (AcpiGbl_PreDefinedNames[PreDefineIndex].Name)
         {
-            if (ACPI_COMPARE_NAME (Node->Name.Ascii,
+            if (ACPI_COMPARE_NAMESEG (Node->Name.Ascii,
                 AcpiGbl_PreDefinedNames[PreDefineIndex].Name))
             {
                 PreDefined = TRUE;
@@ -693,9 +733,9 @@ AcpiDmLoadDescendingOp (
          * 2) Not the root node
          * 3) Not a node created by Scope
          */
-
-        if (!PreDefined && Node != AcpiGbl_RootNode &&
-            Op->Common.AmlOpcode != AML_SCOPE_OP)
+        if (!PreDefined &&
+            (Node != AcpiGbl_RootNode) &&
+            (Op->Common.AmlOpcode != AML_SCOPE_OP))
         {
             Node->OwnerId = WalkState->OwnerId;
         }
@@ -708,7 +748,8 @@ Exit:
     {
         if (Op->Common.Node)
         {
-            Status = AcpiDsScopeStackPush (Op->Common.Node, ObjectType, WalkState);
+            Status = AcpiDsScopeStackPush (Op->Common.Node, ObjectType,
+                WalkState);
             if (ACPI_FAILURE (Status))
             {
                 return (Status);
@@ -750,11 +791,11 @@ AcpiDmXrefDescendingOp (
     ACPI_OPERAND_OBJECT     *Object;
     UINT32                  ParamCount = 0;
     char                    *Pathname;
+    UINT16                  Flags = 0;
 
 
     WalkState = Info->WalkState;
     OpInfo = AcpiPsGetOpcodeInfo (Op->Common.AmlOpcode);
-    ObjectType = OpInfo->ObjectType;
     ObjectType = AslMapNamedOpcodeToDataType (Op->Asl.AmlOpcode);
 
     if ((!(OpInfo->Flags & AML_NAMED)) &&
@@ -764,7 +805,6 @@ AcpiDmXrefDescendingOp (
     {
         goto Exit;
     }
-
 
     /* Get the NamePath from the appropriate place */
 
@@ -785,9 +825,10 @@ AcpiDmXrefDescendingOp (
                 Path = NextOp->Common.Value.String;
             }
         }
-        else if (Op->Common.AmlOpcode == AML_SCOPE_OP)
+        else if (Op->Common.AmlOpcode == AML_SCOPE_OP ||
+                 Op->Common.AmlOpcode == AML_EXTERNAL_OP)
         {
-            Path = (char *) Op->Named.Path;
+            Path = Op->Named.Path;
         }
     }
     else if (OpInfo->Flags & AML_CREATE)
@@ -825,8 +866,9 @@ AcpiDmXrefDescendingOp (
      */
     Node = NULL;
     Status = AcpiNsLookup (WalkState->ScopeInfo, Path, ACPI_TYPE_ANY,
-                ACPI_IMODE_EXECUTE, ACPI_NS_SEARCH_PARENT | ACPI_NS_DONT_OPEN_SCOPE,
-                WalkState, &Node);
+        ACPI_IMODE_EXECUTE, ACPI_NS_SEARCH_PARENT | ACPI_NS_DONT_OPEN_SCOPE,
+        WalkState, &Node);
+
     if (ACPI_SUCCESS (Status) && (Node->Flags & ANOBJ_IS_EXTERNAL))
     {
         /* Node was created by an External() statement */
@@ -846,17 +888,17 @@ AcpiDmXrefDescendingOp (
              * method.
              */
             if (!(Op->Asl.Parent &&
-                (Op->Asl.Parent->Asl.AmlOpcode == AML_COND_REF_OF_OP)))
+                (Op->Asl.Parent->Asl.AmlOpcode == AML_CONDITIONAL_REF_OF_OP)))
             {
                 if (Node)
                 {
                     AcpiDmAddNodeToExternalList (Node,
-                        (UINT8) ObjectType, 0, 0);
+                        (UINT8) ObjectType, 7, Flags);
                 }
                 else
                 {
                     AcpiDmAddOpToExternalList (Op, Path,
-                        (UINT8) ObjectType, 0, 0);
+                        (UINT8) ObjectType, 7, Flags);
                 }
             }
         }
@@ -908,7 +950,8 @@ Exit:
     {
         if (Op->Common.Node)
         {
-            Status = AcpiDsScopeStackPush (Op->Common.Node, ObjectType, WalkState);
+            Status = AcpiDsScopeStackPush (Op->Common.Node, ObjectType,
+                WalkState);
             if (ACPI_FAILURE (Status))
             {
                 return (Status);
@@ -919,21 +962,58 @@ Exit:
     return (AE_OK);
 }
 
-
 /*******************************************************************************
  *
- * FUNCTION:    AcpiDmResourceDescendingOp
+ * FUNCTION:    AcpiDmCommonDescendingOp
  *
  * PARAMETERS:  ASL_WALK_CALLBACK
  *
- * RETURN:      None
+ * RETURN:      ACPI_STATUS
  *
- * DESCRIPTION: Process one parse op during symbolic resource index conversion.
+ * DESCRIPTION: Perform parse tree preprocessing before main disassembly walk.
  *
  ******************************************************************************/
 
 static ACPI_STATUS
-AcpiDmResourceDescendingOp (
+AcpiDmCommonDescendingOp (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level,
+    void                    *Context)
+{
+    ACPI_STATUS             Status;
+
+
+    /* Resource descriptor conversion */
+
+    Status = AcpiDmProcessResourceDescriptors (Op, Level, Context);
+    if (ACPI_FAILURE (Status))
+    {
+        return (Status);
+    }
+
+    /* Switch/Case conversion */
+
+    Status = AcpiDmProcessSwitch (Op);
+    return (Status);
+}
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiDmProcessResourceDescriptors
+ *
+ * PARAMETERS:  ASL_WALK_CALLBACK
+ *
+ * RETURN:      ACPI_STATUS
+ *
+ * DESCRIPTION: Convert fixed-offset references to resource descriptors to
+ *              symbolic references. Should only be called after namespace has
+ *              been cross referenced.
+ *
+ ******************************************************************************/
+
+static ACPI_STATUS
+AcpiDmProcessResourceDescriptors (
     ACPI_PARSE_OBJECT       *Op,
     UINT32                  Level,
     void                    *Context)
@@ -956,7 +1036,8 @@ AcpiDmResourceDescendingOp (
         if (Op->Common.Node)
         {
 
-            Status = AcpiDsScopeStackPush (Op->Common.Node, ObjectType, WalkState);
+            Status = AcpiDsScopeStackPush (Op->Common.Node, ObjectType,
+                WalkState);
             if (ACPI_FAILURE (Status))
             {
                 return (Status);
@@ -971,7 +1052,6 @@ AcpiDmResourceDescendingOp (
     AcpiDmCheckResourceReference (Op, WalkState);
     return (AE_OK);
 }
-
 
 /*******************************************************************************
  *
@@ -993,14 +1073,11 @@ AcpiDmCommonAscendingOp (
     void                    *Context)
 {
     ACPI_OP_WALK_INFO       *Info = Context;
-    const ACPI_OPCODE_INFO  *OpInfo;
     ACPI_OBJECT_TYPE        ObjectType;
 
 
     /* Close scope if necessary */
 
-    OpInfo = AcpiPsGetOpcodeInfo (Op->Common.AmlOpcode);
-    ObjectType = OpInfo->ObjectType;
     ObjectType = AslMapNamedOpcodeToDataType (Op->Asl.AmlOpcode);
 
     if (AcpiNsOpensScope (ObjectType))
@@ -1010,7 +1087,6 @@ AcpiDmCommonAscendingOp (
 
     return (AE_OK);
 }
-
 
 /*******************************************************************************
  *
@@ -1036,40 +1112,69 @@ AcpiDmInspectPossibleArgs (
 {
     const ACPI_OPCODE_INFO  *OpInfo;
     UINT32                  i;
-    UINT32                  Last = 0;
-    UINT32                  Lookahead;
+    UINT32                  ArgumentCount = 0;
+    ACPI_PARSE_OBJECT       *NextOp;
+    ACPI_PARSE_OBJECT       *ExecuteOp;
 
 
-    Lookahead = (ACPI_METHOD_NUM_ARGS + TargetCount) - CurrentOpArgCount;
+    if (!Op)
+    {
+        return (0);
+    }
 
     /* Lookahead for the maximum number of possible arguments */
 
-    for (i = 0; i < Lookahead; i++)
+    NextOp = Op->Common.Next;
+
+    for (i = 0; (i < ACPI_METHOD_NUM_ARGS) && NextOp; i++)
     {
-        if (!Op)
+        OpInfo = AcpiPsGetOpcodeInfo (NextOp->Common.AmlOpcode);
+
+        /* Any one of these operators is "very probably" not a method arg */
+
+        if ((NextOp->Common.AmlOpcode == AML_STORE_OP) ||
+            (NextOp->Common.AmlOpcode == AML_NOTIFY_OP) ||
+            (OpInfo->Class == AML_CLASS_CONTROL) ||
+            (OpInfo->Class == AML_CLASS_CREATE) ||
+            (OpInfo->Class == AML_CLASS_NAMED_OBJECT))
         {
             break;
         }
 
-        OpInfo = AcpiPsGetOpcodeInfo (Op->Common.AmlOpcode);
-
-        /*
-         * Any one of these operators is "very probably" not a method arg
-         */
-        if ((Op->Common.AmlOpcode == AML_STORE_OP) ||
-            (Op->Common.AmlOpcode == AML_NOTIFY_OP))
+        if (OpInfo->Class == AML_CLASS_EXECUTE)
         {
-            break;
+            /* Probable that this is method arg if there is no target */
+
+            ExecuteOp = NextOp->Common.Value.Arg;
+            while (ExecuteOp)
+            {
+                if ((ExecuteOp->Common.AmlOpcode == AML_INT_NAMEPATH_OP) &&
+                    (ExecuteOp->Common.Value.Arg == NULL))
+                {
+                    /* No target, could be a method arg */
+
+                    break;
+                }
+
+                if (NextOp->Common.AmlOpcode == AML_REF_OF_OP)
+                {
+                    break;
+                }
+
+                ExecuteOp = ExecuteOp->Common.Next;
+            }
+
+            if (!ExecuteOp)
+            {
+                /* Has a target, not method arg */
+
+                return (ArgumentCount);
+            }
         }
 
-        if ((OpInfo->Class != AML_CLASS_EXECUTE) &&
-            (OpInfo->Class != AML_CLASS_CONTROL))
-        {
-            Last = i+1;
-        }
-
-        Op = Op->Common.Next;
+        ArgumentCount++;
+        NextOp = NextOp->Common.Next;
     }
 
-    return (Last);
+    return (ArgumentCount);
 }

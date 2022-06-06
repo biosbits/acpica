@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -108,16 +108,16 @@ ApCheckForPredefinedMethod (
 
     case ACPI_EVENT_RESERVED_NAME:      /* _Lxx/_Exx/_Wxx/_Qxx methods */
 
-        Gbl_ReservedMethods++;
+        AslGbl_ReservedMethods++;
 
         /* NumArguments must be zero for all _Lxx/_Exx/_Wxx/_Qxx methods */
 
         if (MethodInfo->NumArguments != 0)
         {
-            sprintf (MsgBuffer, "%s requires %u", Op->Asl.ExternalName, 0);
+            sprintf (AslGbl_MsgBuffer, "%s requires %d", Op->Asl.ExternalName, 0);
 
             AslError (ASL_WARNING, ASL_MSG_RESERVED_ARG_COUNT_HI, Op,
-                MsgBuffer);
+                AslGbl_MsgBuffer);
         }
         break;
 
@@ -130,25 +130,25 @@ ApCheckForPredefinedMethod (
          * Some methods are allowed to have a "minimum" number of args
          * (_SCP) because their definition in ACPI has changed over time.
          */
-        Gbl_ReservedMethods++;
+        AslGbl_ReservedMethods++;
         ThisName = &AcpiGbl_PredefinedMethods[Index];
         RequiredArgCount = METHOD_GET_ARG_COUNT (ThisName->Info.ArgumentList);
 
         if (MethodInfo->NumArguments != RequiredArgCount)
         {
-            sprintf (MsgBuffer, "%4.4s requires %u",
+            sprintf (AslGbl_MsgBuffer, "%4.4s requires %u",
                 ThisName->Info.Name, RequiredArgCount);
 
             if (MethodInfo->NumArguments < RequiredArgCount)
             {
                 AslError (ASL_WARNING, ASL_MSG_RESERVED_ARG_COUNT_LO, Op,
-                    MsgBuffer);
+                    AslGbl_MsgBuffer);
             }
             else if ((MethodInfo->NumArguments > RequiredArgCount) &&
                 !(ThisName->Info.ArgumentList & ARG_COUNT_IS_MINIMUM))
             {
                 AslError (ASL_WARNING, ASL_MSG_RESERVED_ARG_COUNT_HI, Op,
-                    MsgBuffer);
+                    AslGbl_MsgBuffer);
             }
         }
 
@@ -159,14 +159,14 @@ ApCheckForPredefinedMethod (
         if (MethodInfo->NumReturnNoValue &&
             ThisName->Info.ExpectedBtypes)
         {
-            AcpiUtGetExpectedReturnTypes (StringBuffer,
+            AcpiUtGetExpectedReturnTypes (AslGbl_StringBuffer,
                 ThisName->Info.ExpectedBtypes);
 
-            sprintf (MsgBuffer, "%s required for %4.4s",
-                StringBuffer, ThisName->Info.Name);
+            sprintf (AslGbl_MsgBuffer, "%s required for %4.4s",
+                AslGbl_StringBuffer, ThisName->Info.Name);
 
             AslError (ASL_WARNING, ASL_MSG_RESERVED_RETURN_VALUE, Op,
-                MsgBuffer);
+                AslGbl_MsgBuffer);
         }
         break;
     }
@@ -257,10 +257,10 @@ ApCheckPredefinedReturnValue (
      * Note: Disable compiler errors/warnings because any errors will be
      * caught when analyzing the parent method. Eliminates duplicate errors.
      */
-    Gbl_AllExceptionsDisabled = TRUE;
+    AslGbl_AllExceptionsDisabled = TRUE;
     Index = ApCheckForPredefinedName (MethodInfo->Op,
-                MethodInfo->Op->Asl.NameSeg);
-    Gbl_AllExceptionsDisabled = FALSE;
+        MethodInfo->Op->Asl.NameSeg);
+    AslGbl_AllExceptionsDisabled = FALSE;
 
     switch (Index)
     {
@@ -341,7 +341,7 @@ ApCheckPredefinedReturnValue (
  * DESCRIPTION: Check for a predefined name for a static object (created via
  *              the ASL Name operator). If it is a predefined ACPI name, ensure
  *              that the name does not require any arguments (which would
- *              require a control method implemenation of the name), and that
+ *              require a control method implementation of the name), and that
  *              the type of the object is one of the expected types for the
  *              predefined name.
  *
@@ -454,8 +454,8 @@ ApCheckForPredefinedName (
 
     if (Name[0] == 0)
     {
-        AcpiOsPrintf ("Found a null name, external = %s\n",
-            Op->Asl.ExternalName);
+        AslError (ASL_ERROR, ASL_MSG_COMPILER_INTERNAL, Op,
+            "zero length name found");
     }
 
     /* All reserved names are prefixed with a single underscore */
@@ -470,7 +470,7 @@ ApCheckForPredefinedName (
     ThisName = AcpiGbl_PredefinedMethods;
     for (i = 0; ThisName->Info.Name[0]; i++)
     {
-        if (ACPI_COMPARE_NAME (Name, ThisName->Info.Name))
+        if (ACPI_COMPARE_NAMESEG (Name, ThisName->Info.Name))
         {
             /* Return index into predefined array */
             return (i);
@@ -484,7 +484,7 @@ ApCheckForPredefinedName (
     ThisName = AcpiGbl_ResourceNames;
     while (ThisName->Info.Name[0])
     {
-        if (ACPI_COMPARE_NAME (Name, ThisName->Info.Name))
+        if (ACPI_COMPARE_NAMESEG (Name, ThisName->Info.Name))
         {
             return (ACPI_PREDEFINED_NAME);
         }
@@ -495,7 +495,7 @@ ApCheckForPredefinedName (
     ThisName = AcpiGbl_ScopeNames;
     while (ThisName->Info.Name[0])
     {
-        if (ACPI_COMPARE_NAME (Name, ThisName->Info.Name))
+        if (ACPI_COMPARE_NAMESEG (Name, ThisName->Info.Name))
         {
             return (ACPI_PREDEFINED_NAME);
         }
@@ -558,7 +558,7 @@ ApCheckForSpecialName (
     {
         /* Ignore if actually emitted by the compiler */
 
-        if (Op->Asl.CompileFlags & NODE_COMPILER_EMITTED)
+        if (Op->Asl.CompileFlags & OP_COMPILER_EMITTED)
         {
             return (ACPI_NOT_RESERVED_NAME);
         }
@@ -566,12 +566,13 @@ ApCheckForSpecialName (
         /*
          * Was not actually emitted by the compiler. This is a special case,
          * however. If the ASL code being compiled was the result of a
-         * dissasembly, it may possibly contain valid compiler-emitted names
+         * disassembly, it may possibly contain valid compiler-emitted names
          * of the form "_T_x". We don't want to issue an error or even a
          * warning and force the user to manually change the names. So, we
          * will issue a remark instead.
          */
-        AslError (ASL_REMARK, ASL_MSG_COMPILER_RESERVED, Op, Op->Asl.ExternalName);
+        AslError (ASL_REMARK, ASL_MSG_COMPILER_RESERVED,
+            Op, Op->Asl.ExternalName);
         return (ACPI_COMPILER_RESERVED_NAME);
     }
 
@@ -580,8 +581,8 @@ ApCheckForSpecialName (
      * warning, since the entire namespace starting with an underscore is
      * reserved by the ACPI spec.
      */
-    AslError (ASL_WARNING, ASL_MSG_UNKNOWN_RESERVED_NAME, Op,
-        Op->Asl.ExternalName);
+    AslError (ASL_WARNING, ASL_MSG_UNKNOWN_RESERVED_NAME,
+        Op, Op->Asl.ExternalName);
 
     return (ACPI_NOT_RESERVED_NAME);
 }
@@ -695,20 +696,20 @@ TypeErrorExit:
 
     /* Format the expected types and emit an error message */
 
-    AcpiUtGetExpectedReturnTypes (StringBuffer, ExpectedBtypes);
+    AcpiUtGetExpectedReturnTypes (AslGbl_StringBuffer, ExpectedBtypes);
 
     if (PackageIndex == ACPI_NOT_PACKAGE_ELEMENT)
     {
-        sprintf (MsgBuffer, "%4.4s: found %s, %s required",
-            PredefinedName, TypeName, StringBuffer);
+        sprintf (AslGbl_MsgBuffer, "%4.4s: found %s, %s required",
+            PredefinedName, TypeName, AslGbl_StringBuffer);
     }
     else
     {
-        sprintf (MsgBuffer, "%4.4s: found %s at index %u, %s required",
-            PredefinedName, TypeName, PackageIndex, StringBuffer);
+        sprintf (AslGbl_MsgBuffer, "%4.4s: found %s at index %u, %s required",
+            PredefinedName, TypeName, PackageIndex, AslGbl_StringBuffer);
     }
 
-    AslError (ASL_ERROR, ASL_MSG_RESERVED_OPERAND_TYPE, Op, MsgBuffer);
+    AslError (ASL_ERROR, ASL_MSG_RESERVED_OPERAND_TYPE, Op, AslGbl_MsgBuffer);
     return (AE_TYPE);
 }
 
@@ -744,7 +745,7 @@ ApDisplayReservedNames (
     ThisName = AcpiGbl_PredefinedMethods;
     while (ThisName->Info.Name[0])
     {
-        AcpiUtDisplayPredefinedMethod (MsgBuffer, ThisName, FALSE);
+        AcpiUtDisplayPredefinedMethod (AslGbl_MsgBuffer, ThisName, FALSE);
         Count++;
         ThisName = AcpiUtGetNextPredefinedMethod (ThisName);
     }
@@ -760,11 +761,11 @@ ApDisplayReservedNames (
     ThisName = AcpiGbl_ResourceNames;
     while (ThisName->Info.Name[0])
     {
-        NumTypes = AcpiUtGetResourceBitWidth (MsgBuffer,
+        NumTypes = AcpiUtGetResourceBitWidth (AslGbl_MsgBuffer,
             ThisName->Info.ArgumentList);
 
         printf ("%4.4s    Field is %s bits wide%s\n",
-            ThisName->Info.Name, MsgBuffer,
+            ThisName->Info.Name, AslGbl_MsgBuffer,
             (NumTypes > 1) ? " (depending on descriptor type)" : "");
 
         Count++;

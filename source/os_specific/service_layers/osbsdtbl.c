@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -43,7 +43,7 @@
 
 #include "acpidump.h"
 
-#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
+#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined (__DragonFly__)
 #include <kenv.h>
 #endif
 #include <unistd.h>
@@ -211,8 +211,8 @@ AcpiOsGetTableByName (
     /* Instance is only valid for SSDT/UEFI tables */
 
     if (Instance &&
-        !ACPI_COMPARE_NAME (Signature, ACPI_SIG_SSDT) &&
-        !ACPI_COMPARE_NAME (Signature, ACPI_SIG_UEFI))
+        !ACPI_COMPARE_NAMESEG (Signature, ACPI_SIG_SSDT) &&
+        !ACPI_COMPARE_NAMESEG (Signature, ACPI_SIG_UEFI))
     {
         return (AE_LIMIT);
     }
@@ -229,7 +229,7 @@ AcpiOsGetTableByName (
      * If one of the main ACPI tables was requested (RSDT/XSDT/FADT),
      * simply return it immediately.
      */
-    if (ACPI_COMPARE_NAME (Signature, ACPI_SIG_XSDT))
+    if (ACPI_COMPARE_NAMESEG (Signature, ACPI_SIG_XSDT))
     {
         if (!Gbl_Revision)
         {
@@ -241,7 +241,7 @@ AcpiOsGetTableByName (
         return (AE_OK);
     }
 
-    if (ACPI_COMPARE_NAME (Signature, ACPI_SIG_RSDT))
+    if (ACPI_COMPARE_NAMESEG (Signature, ACPI_SIG_RSDT))
     {
         if (!Gbl_Rsdp.RsdtPhysicalAddress)
         {
@@ -253,7 +253,7 @@ AcpiOsGetTableByName (
         return (AE_OK);
     }
 
-    if (ACPI_COMPARE_NAME (Signature, ACPI_SIG_FADT))
+    if (ACPI_COMPARE_NAMESEG (Signature, ACPI_SIG_FADT))
     {
         *Address = Gbl_FadtAddress;
         *Table = (ACPI_TABLE_HEADER *) Gbl_Fadt;
@@ -376,7 +376,7 @@ static ACPI_STATUS
 OslTableInitialize (
     void)
 {
-#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
+#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
     char                    Buffer[32];
 #endif
     ACPI_TABLE_HEADER       *MappedTable;
@@ -386,7 +386,9 @@ OslTableInitialize (
     ACPI_SIZE               RsdpSize;
     ACPI_STATUS             Status;
     u_long                  Address = 0;
+#if defined(SYSTEM_SYSCTL)
     size_t                  Length = sizeof (Address);
+#endif
 
 
     /* Get main ACPI tables from memory on first invocation of this function */
@@ -402,12 +404,13 @@ OslTableInitialize (
     {
         Address = Gbl_RsdpBase;
     }
-#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
+#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined (__DragonFly__)
     else if (kenv (KENV_GET, SYSTEM_KENV, Buffer, sizeof (Buffer)) > 0)
     {
         Address = strtoul (Buffer, NULL, 0);
     }
 #endif
+#if defined(SYSTEM_SYSCTL)
     if (!Address)
     {
         if (sysctlbyname (SYSTEM_SYSCTL, &Address, &Length, NULL, 0) != 0)
@@ -415,6 +418,7 @@ OslTableInitialize (
             Address = 0;
         }
     }
+#endif
     if (Address)
     {
         RsdpBase = Address;
@@ -576,15 +580,15 @@ OslGetTableViaRoot (
 
     /* DSDT and FACS address must be extracted from the FADT */
 
-    if (ACPI_COMPARE_NAME (Signature, ACPI_SIG_DSDT) ||
-        ACPI_COMPARE_NAME (Signature, ACPI_SIG_FACS))
+    if (ACPI_COMPARE_NAMESEG (Signature, ACPI_SIG_DSDT) ||
+        ACPI_COMPARE_NAMESEG (Signature, ACPI_SIG_FACS))
     {
         /*
          * Get the appropriate address, either 32-bit or 64-bit. Be very
          * careful about the FADT length and validate table addresses.
          * Note: The 64-bit addresses have priority.
          */
-        if (ACPI_COMPARE_NAME (Signature, ACPI_SIG_DSDT))
+        if (ACPI_COMPARE_NAMESEG (Signature, ACPI_SIG_DSDT))
         {
             if ((Gbl_Fadt->Header.Length >= MIN_FADT_FOR_XDSDT) &&
                 Gbl_Fadt->XDsdt)
@@ -647,7 +651,7 @@ OslGetTableViaRoot (
 
             /* Does this table match the requested signature? */
 
-            if (ACPI_COMPARE_NAME (MappedTable->Signature, Signature))
+            if (ACPI_COMPARE_NAMESEG (MappedTable->Signature, Signature))
             {
 
                 /* Match table instance (for SSDT/UEFI tables) */
@@ -750,18 +754,18 @@ OslAddTablesToList(
 
         case 1:
 
-            ACPI_MOVE_NAME (NewInfo->Signature,
+            ACPI_COPY_NAMESEG (NewInfo->Signature,
                 Gbl_Revision ? ACPI_SIG_XSDT : ACPI_SIG_RSDT);
             break;
 
         case 2:
 
-            ACPI_MOVE_NAME (NewInfo->Signature, ACPI_SIG_FACS);
+            ACPI_COPY_NAMESEG (NewInfo->Signature, ACPI_SIG_FACS);
             break;
 
         default:
 
-            ACPI_MOVE_NAME (NewInfo->Signature, ACPI_SIG_DSDT);
+            ACPI_COPY_NAMESEG (NewInfo->Signature, ACPI_SIG_DSDT);
 
         }
 
@@ -807,7 +811,7 @@ OslAddTablesToList(
         while (NewInfo->Next != NULL)
         {
             NewInfo = NewInfo->Next;
-            if (ACPI_COMPARE_NAME (Table->Signature, NewInfo->Signature))
+            if (ACPI_COMPARE_NAMESEG (Table->Signature, NewInfo->Signature))
             {
                 Instance++;
             }
@@ -820,7 +824,7 @@ OslAddTablesToList(
             return (AE_NO_MEMORY);
         }
 
-        ACPI_MOVE_NAME (NewInfo->Signature, Table->Signature);
+        ACPI_COPY_NAMESEG (NewInfo->Signature, Table->Signature);
 
         AcpiOsUnmapMemory (Table, sizeof (*Table));
 
@@ -882,7 +886,7 @@ OslMapTable (
     /* If specified, signature must match */
 
     if (Signature &&
-        !ACPI_COMPARE_NAME (Signature, MappedTable->Signature))
+        !ACPI_COMPARE_NAMESEG (Signature, MappedTable->Signature))
     {
         AcpiOsUnmapMemory (MappedTable, sizeof (*MappedTable));
         return (AE_NOT_EXIST);

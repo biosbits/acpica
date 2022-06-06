@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -82,6 +82,7 @@ AcpiDsScopeStackClear (
         ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
             "Popped object type (%s)\n",
             AcpiUtGetTypeName (ScopeInfo->Common.Value)));
+
         AcpiUtDeleteGenericState (ScopeInfo);
     }
 }
@@ -160,8 +161,7 @@ AcpiDsScopeStackPush (
     }
     else
     {
-        ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EXEC,
-            "[\\___] (%s)", "ROOT"));
+        ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EXEC, ACPI_NAMESPACE_ROOT));
     }
 
     ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EXEC,
@@ -219,15 +219,13 @@ AcpiDsScopeStackPop (
     NewScopeInfo = WalkState->ScopeInfo;
     if (NewScopeInfo)
     {
-        ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EXEC,
-            "[%4.4s] (%s)\n",
+        ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EXEC, "[%4.4s] (%s)\n",
             AcpiUtGetNodeName (NewScopeInfo->Scope.Node),
             AcpiUtGetTypeName (NewScopeInfo->Common.Value)));
     }
     else
     {
-        ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EXEC,
-            "[\\___] (ROOT)\n"));
+        ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EXEC, "%s\n", ACPI_NAMESPACE_ROOT));
     }
 
     AcpiUtDeleteGenericState (ScopeInfo);

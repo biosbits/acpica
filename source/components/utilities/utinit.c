@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -226,7 +226,6 @@ AcpiUtInitGlobals (
     AcpiGbl_NextOwnerIdOffset           = 0;
     AcpiGbl_DebuggerConfiguration       = DEBUGGER_THREADING;
     AcpiGbl_OsiMutex                    = NULL;
-    AcpiGbl_RegMethodsExecuted          = FALSE;
 
     /* Hardware oriented */
 
@@ -235,7 +234,6 @@ AcpiUtInitGlobals (
 
     /* Namespace */
 
-    AcpiGbl_ModuleCodeList              = NULL;
     AcpiGbl_RootNode                    = NULL;
     AcpiGbl_RootNodeStruct.Name.Integer = ACPI_ROOT_NAME;
     AcpiGbl_RootNodeStruct.DescriptorType = ACPI_DESC_TYPE_NAMED;
@@ -260,8 +258,6 @@ AcpiUtInitGlobals (
     AcpiGbl_DisplayFinalMemStats        = FALSE;
     AcpiGbl_DisableMemTracking          = FALSE;
 #endif
-
-    ACPI_DEBUGGER_EXEC (AcpiGbl_DbTerminateThreads = FALSE);
 
     return_ACPI_STATUS (AE_OK);
 }
@@ -310,6 +306,20 @@ AcpiUtSubsystemShutdown (
 {
     ACPI_FUNCTION_TRACE (UtSubsystemShutdown);
 
+
+    /* Just exit if subsystem is already shutdown */
+
+    if (AcpiGbl_Shutdown)
+    {
+        ACPI_ERROR ((AE_INFO, "ACPI Subsystem is already terminated"));
+        return_VOID;
+    }
+
+    /* Subsystem appears active, go ahead and shut it down */
+
+    AcpiGbl_Shutdown = TRUE;
+    AcpiGbl_StartupFlags = 0;
+    ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "Shutting down ACPI Subsystem\n"));
 
 #ifndef ACPI_ASL_COMPILER
 

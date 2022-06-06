@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -44,12 +44,19 @@
 #ifndef __ACDEBUG_H__
 #define __ACDEBUG_H__
 
+/* The debugger is used in conjunction with the disassembler most of time */
 
-#define ACPI_DEBUG_BUFFER_SIZE  0x4000      /* 16K buffer for return objects */
+#ifdef ACPI_DISASSEMBLER
+#include "acdisasm.h"
+#endif
+
+
+#define ACPI_DEBUG_BUFFER_SIZE      0x4000      /* 16K buffer for return objects */
+#define ACPI_DEBUG_LENGTH_FORMAT    " (%.4X bits, %.3X bytes)"
 
 typedef struct acpi_db_command_info
 {
-    char                    *Name;          /* Command Name */
+    const char              *Name;          /* Command Name */
     UINT8                   MinArgs;        /* Minimum arguments required */
 
 } ACPI_DB_COMMAND_INFO;
@@ -64,7 +71,7 @@ typedef struct acpi_db_command_help
 
 typedef struct acpi_db_argument_info
 {
-    char                    *Name;          /* Argument Name */
+    const char              *Name;          /* Argument Name */
 
 } ACPI_DB_ARGUMENT_INFO;
 
@@ -72,35 +79,32 @@ typedef struct acpi_db_execute_walk
 {
     UINT32                  Count;
     UINT32                  MaxCount;
+    char                    NameSeg[ACPI_NAMESEG_SIZE + 1];
 
 } ACPI_DB_EXECUTE_WALK;
 
 
 #define PARAM_LIST(pl)                  pl
-#define DBTEST_OUTPUT_LEVEL(lvl)        if (AcpiGbl_DbOpt_Verbose)
-#define VERBOSE_PRINT(fp)               DBTEST_OUTPUT_LEVEL(lvl) {\
-                                            AcpiOsPrintf PARAM_LIST(fp);}
 
 #define EX_NO_SINGLE_STEP               1
 #define EX_SINGLE_STEP                  2
+#define EX_ALL                          4
 
 
 /*
  * dbxface - external debugger interfaces
  */
-ACPI_STATUS
-AcpiDbInitialize (
-    void);
-
-void
-AcpiDbTerminate (
-    void);
-
+ACPI_DBR_DEPENDENT_RETURN_OK (
 ACPI_STATUS
 AcpiDbSingleStep (
     ACPI_WALK_STATE         *WalkState,
     ACPI_PARSE_OBJECT       *Op,
-    UINT32                  OpType);
+    UINT32                  OpType))
+
+ACPI_DBR_DEPENDENT_RETURN_VOID (
+void
+AcpiDbSignalBreakPoint (
+    ACPI_WALK_STATE         *WalkState))
 
 
 /*
@@ -232,8 +236,12 @@ AcpiDbDisassembleAml (
     ACPI_PARSE_OBJECT       *Op);
 
 void
-AcpiDbBatchExecute (
-    char                    *CountArg);
+AcpiDbEvaluatePredefinedNames (
+    void);
+
+void
+AcpiDbEvaluateAll (
+    char                    *NameSeg);
 
 
 /*
@@ -282,6 +290,10 @@ void
 AcpiDbGetBusInfo (
     void);
 
+ACPI_STATUS
+AcpiDbDisplayFields (
+    UINT32                  AddressSpaceId);
+
 
 /*
  * dbdisply - debug display commands
@@ -295,10 +307,11 @@ AcpiDbDecodeAndDisplayObject (
     char                    *Target,
     char                    *OutputType);
 
+ACPI_DBR_DEPENDENT_RETURN_VOID (
 void
 AcpiDbDisplayResultObject (
     ACPI_OPERAND_OBJECT     *ObjDesc,
-    ACPI_WALK_STATE         *WalkState);
+    ACPI_WALK_STATE         *WalkState))
 
 ACPI_STATUS
 AcpiDbDisplayAllMethods (
@@ -324,10 +337,11 @@ void
 AcpiDbDisplayObjectType (
     char                    *ObjectArg);
 
+ACPI_DBR_DEPENDENT_RETURN_VOID (
 void
 AcpiDbDisplayArgumentObject (
     ACPI_OPERAND_OBJECT     *ObjDesc,
-    ACPI_WALK_STATE         *WalkState);
+    ACPI_WALK_STATE         *WalkState))
 
 
 /*
@@ -339,6 +353,12 @@ AcpiDbExecute (
     char                    **Args,
     ACPI_OBJECT_TYPE        *Types,
     UINT32                  Flags);
+
+void
+AcpiDbCreateExecutionThread (
+    char                    *MethodNameArg,
+    char                    **Arguments,
+    ACPI_OBJECT_TYPE        *Types);
 
 void
 AcpiDbCreateExecutionThreads (
@@ -379,10 +399,8 @@ AcpiDbLoadAcpiTable (
     char                    *Filename);
 
 ACPI_STATUS
-AcpiDbGetTableFromFile (
-    char                    *Filename,
-    ACPI_TABLE_HEADER       **Table,
-    BOOLEAN                 MustBeAmlTable);
+AcpiDbLoadTables (
+    ACPI_NEW_TABLE_DESC     *ListHead);
 
 
 /*
@@ -420,8 +438,7 @@ AcpiDbExecuteThread (
 
 ACPI_STATUS
 AcpiDbUserCommands (
-    char                    Prompt,
-    ACPI_PARSE_OBJECT       *Op);
+    void);
 
 char *
 AcpiDbGetNextToken (

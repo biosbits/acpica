@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -110,39 +110,73 @@ AcpiUtCreateCaches (
     /* Object Caches, for frequently used objects */
 
     Status = AcpiOsCreateCache ("Acpi-Namespace", sizeof (ACPI_NAMESPACE_NODE),
-                ACPI_MAX_NAMESPACE_CACHE_DEPTH, &AcpiGbl_NamespaceCache);
+        ACPI_MAX_NAMESPACE_CACHE_DEPTH, &AcpiGbl_NamespaceCache);
     if (ACPI_FAILURE (Status))
     {
         return (Status);
     }
 
     Status = AcpiOsCreateCache ("Acpi-State", sizeof (ACPI_GENERIC_STATE),
-                ACPI_MAX_STATE_CACHE_DEPTH, &AcpiGbl_StateCache);
+        ACPI_MAX_STATE_CACHE_DEPTH, &AcpiGbl_StateCache);
     if (ACPI_FAILURE (Status))
     {
         return (Status);
     }
 
     Status = AcpiOsCreateCache ("Acpi-Parse", sizeof (ACPI_PARSE_OBJ_COMMON),
-                ACPI_MAX_PARSE_CACHE_DEPTH, &AcpiGbl_PsNodeCache);
+        ACPI_MAX_PARSE_CACHE_DEPTH, &AcpiGbl_PsNodeCache);
     if (ACPI_FAILURE (Status))
     {
         return (Status);
     }
 
     Status = AcpiOsCreateCache ("Acpi-ParseExt", sizeof (ACPI_PARSE_OBJ_NAMED),
-                ACPI_MAX_EXTPARSE_CACHE_DEPTH, &AcpiGbl_PsNodeExtCache);
+        ACPI_MAX_EXTPARSE_CACHE_DEPTH, &AcpiGbl_PsNodeExtCache);
     if (ACPI_FAILURE (Status))
     {
         return (Status);
     }
 
     Status = AcpiOsCreateCache ("Acpi-Operand", sizeof (ACPI_OPERAND_OBJECT),
-                ACPI_MAX_OBJECT_CACHE_DEPTH, &AcpiGbl_OperandCache);
+        ACPI_MAX_OBJECT_CACHE_DEPTH, &AcpiGbl_OperandCache);
     if (ACPI_FAILURE (Status))
     {
         return (Status);
     }
+
+#ifdef ACPI_ASL_COMPILER
+    /*
+     * For use with the ASL-/ASL+ option. This cache keeps track of regular
+     * 0xA9 0x01 comments.
+     */
+    Status = AcpiOsCreateCache ("Acpi-Comment", sizeof (ACPI_COMMENT_NODE),
+        ACPI_MAX_COMMENT_CACHE_DEPTH, &AcpiGbl_RegCommentCache);
+    if (ACPI_FAILURE (Status))
+    {
+        return (Status);
+    }
+
+    /*
+     * This cache keeps track of the starting addresses of where the comments
+     * lie. This helps prevent duplication of comments.
+     */
+    Status = AcpiOsCreateCache ("Acpi-Comment-Addr", sizeof (ACPI_COMMENT_ADDR_NODE),
+        ACPI_MAX_COMMENT_CACHE_DEPTH, &AcpiGbl_CommentAddrCache);
+    if (ACPI_FAILURE (Status))
+    {
+        return (Status);
+    }
+
+    /*
+     * This cache will be used for nodes that represent files.
+     */
+    Status = AcpiOsCreateCache ("Acpi-File", sizeof (ACPI_FILE_NODE),
+        ACPI_MAX_COMMENT_CACHE_DEPTH, &AcpiGbl_FileCache);
+    if (ACPI_FAILURE (Status))
+    {
+        return (Status);
+    }
+#endif
 
 
 #ifdef ACPI_DBG_TRACK_ALLOCATIONS
@@ -150,14 +184,14 @@ AcpiUtCreateCaches (
     /* Memory allocation lists */
 
     Status = AcpiUtCreateList ("Acpi-Global", 0,
-                &AcpiGbl_GlobalList);
+        &AcpiGbl_GlobalList);
     if (ACPI_FAILURE (Status))
     {
         return (Status);
     }
 
     Status = AcpiUtCreateList ("Acpi-Namespace", sizeof (ACPI_NAMESPACE_NODE),
-                &AcpiGbl_NsNodeList);
+        &AcpiGbl_NsNodeList);
     if (ACPI_FAILURE (Status))
     {
         return (Status);
@@ -187,6 +221,7 @@ AcpiUtDeleteCaches (
 #ifdef ACPI_DBG_TRACK_ALLOCATIONS
     char                    Buffer[7];
 
+
     if (AcpiGbl_DisplayFinalMemStats)
     {
         strcpy (Buffer, "MEMORY");
@@ -209,6 +244,16 @@ AcpiUtDeleteCaches (
     (void) AcpiOsDeleteCache (AcpiGbl_PsNodeExtCache);
     AcpiGbl_PsNodeExtCache = NULL;
 
+#ifdef ACPI_ASL_COMPILER
+    (void) AcpiOsDeleteCache (AcpiGbl_RegCommentCache);
+    AcpiGbl_RegCommentCache = NULL;
+
+    (void) AcpiOsDeleteCache (AcpiGbl_CommentAddrCache);
+    AcpiGbl_CommentAddrCache = NULL;
+
+    (void) AcpiOsDeleteCache (AcpiGbl_FileCache);
+    AcpiGbl_FileCache = NULL;
+#endif
 
 #ifdef ACPI_DBG_TRACK_ALLOCATIONS
 
