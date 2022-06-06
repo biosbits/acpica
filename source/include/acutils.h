@@ -1155,7 +1155,6 @@ AcpiAhMatchUuid (
 /*
  * utuuid -- UUID support functions
  */
-#if (defined ACPI_ASL_COMPILER || defined ACPI_EXEC_APP || defined ACPI_HELP_APP)
 void
 AcpiUtConvertStringToUuid (
     char                    *InString,
@@ -1165,6 +1164,5 @@ ACPI_STATUS
 AcpiUtConvertUuidToString (
     char                    *UuidBuffer,
     char                    *OutString);
-#endif
 
 #endif /* _ACUTILS_H */
