@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -99,11 +99,11 @@ AcpiExAllocateNameString (
     {
         /* Special case for root */
 
-        SizeNeeded = 1 + (ACPI_NAME_SIZE * NumNameSegs) + 2 + 1;
+        SizeNeeded = 1 + (ACPI_NAMESEG_SIZE * NumNameSegs) + 2 + 1;
     }
     else
     {
-        SizeNeeded = PrefixCount + (ACPI_NAME_SIZE * NumNameSegs) + 2 + 1;
+        SizeNeeded = PrefixCount + (ACPI_NAMESEG_SIZE * NumNameSegs) + 2 + 1;
     }
 
     /*
@@ -141,7 +141,7 @@ AcpiExAllocateNameString (
     {
         /* Set up multi prefixes   */
 
-        *TempPtr++ = AML_MULTI_NAME_PREFIX_OP;
+        *TempPtr++ = AML_MULTI_NAME_PREFIX;
         *TempPtr++ = (char) NumNameSegs;
     }
     else if (2 == NumNameSegs)
@@ -159,6 +159,7 @@ AcpiExAllocateNameString (
 
     return_PTR (NameString);
 }
+
 
 /*******************************************************************************
  *
@@ -189,8 +190,8 @@ AcpiExNameSegment (
 
 
     /*
-     * If first character is a digit, then we know that we aren't looking at a
-     * valid name segment
+     * If first character is a digit, then we know that we aren't looking
+     * at a valid name segment
      */
     CharBuf[0] = *AmlAddress;
 
@@ -200,14 +201,11 @@ AcpiExNameSegment (
         return_ACPI_STATUS (AE_CTRL_PENDING);
     }
 
-    ACPI_DEBUG_PRINT ((ACPI_DB_LOAD, "Bytes from stream:\n"));
-
     for (Index = 0;
-        (Index < ACPI_NAME_SIZE) && (AcpiUtValidAcpiChar (*AmlAddress, 0));
+        (Index < ACPI_NAMESEG_SIZE) && (AcpiUtValidNameChar (*AmlAddress, 0));
         Index++)
     {
         CharBuf[Index] = *AmlAddress++;
-        ACPI_DEBUG_PRINT ((ACPI_DB_LOAD, "%c\n", CharBuf[Index]));
     }
 
 
@@ -221,9 +219,9 @@ AcpiExNameSegment (
 
         if (NameString)
         {
-            strcat (NameString, CharBuf);
             ACPI_DEBUG_PRINT ((ACPI_DB_NAMES,
-                "Appended to - %s\n", NameString));
+                "Appending NameSeg %s\n", CharBuf));
+            strcat (NameString, CharBuf);
         }
         else
         {
@@ -384,7 +382,7 @@ AcpiExGetNameString (
             }
             break;
 
-        case AML_MULTI_NAME_PREFIX_OP:
+        case AML_MULTI_NAME_PREFIX:
 
             ACPI_DEBUG_PRINT ((ACPI_DB_LOAD, "MultiNamePrefix at %p\n",
                 AmlAddress));
@@ -394,7 +392,8 @@ AcpiExGetNameString (
             AmlAddress++;
             NumSegments = *AmlAddress;
 
-            NameString = AcpiExAllocateNameString (PrefixCount, NumSegments);
+            NameString = AcpiExAllocateNameString (
+                PrefixCount, NumSegments);
             if (!NameString)
             {
                 Status = AE_NO_MEMORY;

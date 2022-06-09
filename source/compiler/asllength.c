@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -44,6 +44,7 @@
 #include "aslcompiler.h"
 #include "aslcompiler.y.h"
 #include "amlcode.h"
+#include "acconvert.h"
 
 
 #define _COMPONENT          ACPI_COMPILER
@@ -132,10 +133,13 @@ LnPackageLengthWalk (
     if ((Op->Asl.Parent) &&
         (Op->Asl.ParseOpcode != PARSEOP_DEFAULT_ARG))
     {
-        Op->Asl.Parent->Asl.AmlSubtreeLength += (Op->Asl.AmlLength +
-                                           Op->Asl.AmlOpcodeLength +
-                                           Op->Asl.AmlPkgLenBytes +
-                                           Op->Asl.AmlSubtreeLength);
+        Op->Asl.Parent->Asl.AmlSubtreeLength += (
+            Op->Asl.AmlLength +
+            Op->Asl.AmlOpcodeLength +
+            Op->Asl.AmlPkgLenBytes +
+            Op->Asl.AmlSubtreeLength +
+            CvCalculateCommentLengths (Op)
+        );
     }
     return (AE_OK);
 }
@@ -226,10 +230,10 @@ CgGenerateAmlOpcodeLength (
     /* Does this opcode have an associated "PackageLength" field? */
 
     Op->Asl.AmlPkgLenBytes = 0;
-    if (Op->Asl.CompileFlags & NODE_AML_PACKAGE)
+    if (Op->Asl.CompileFlags & OP_AML_PACKAGE)
     {
         Op->Asl.AmlPkgLenBytes = CgGetPackageLenByteCount (
-                                    Op, Op->Asl.AmlSubtreeLength);
+            Op, Op->Asl.AmlSubtreeLength);
     }
 
     /* Data opcode lengths are easy */
@@ -332,10 +336,9 @@ CgGenerateAmlLengths (
 
     switch (Op->Asl.ParseOpcode)
     {
-    case PARSEOP_DEFINITIONBLOCK:
+    case PARSEOP_DEFINITION_BLOCK:
 
-        Gbl_TableLength = sizeof (ACPI_TABLE_HEADER) +
-                            Op->Asl.AmlSubtreeLength;
+        AslGbl_TableLength = sizeof (ACPI_TABLE_HEADER) + Op->Asl.AmlSubtreeLength;
         break;
 
     case PARSEOP_NAMESEG:
@@ -348,7 +351,7 @@ CgGenerateAmlLengths (
     case PARSEOP_NAMESTRING:
     case PARSEOP_METHODCALL:
 
-        if (Op->Asl.CompileFlags & NODE_NAME_INTERNALIZED)
+        if (Op->Asl.CompileFlags & OP_NAME_INTERNALIZED)
         {
             break;
         }
@@ -364,17 +367,17 @@ CgGenerateAmlLengths (
 
         Op->Asl.ExternalName = Op->Asl.Value.String;
         Op->Asl.Value.String = Buffer;
-        Op->Asl.CompileFlags |= NODE_NAME_INTERNALIZED;
-
+        Op->Asl.CompileFlags |= OP_NAME_INTERNALIZED;
         Op->Asl.AmlLength = strlen (Buffer);
 
         /*
-         * Check for single backslash reference to root,
-         * make it a null terminated string in the AML
+         * Check for single backslash reference to root or reference to a name
+         * consisting of only prefix (^) characters. Make it a null terminated
+         * string in the AML.
          */
-        if (Op->Asl.AmlLength == 1)
+        if (Op->Asl.AmlLength == 1 || UtNameContainsAllPrefix(Op))
         {
-            Op->Asl.AmlLength = 2;
+            Op->Asl.AmlLength++;
         }
         break;
 
@@ -391,7 +394,7 @@ CgGenerateAmlLengths (
 
         Op->Asl.AmlOpcodeLength = 0;
         Op->Asl.AmlPkgLenBytes = CgGetPackageLenByteCount (Op,
-                                    (UINT32) Op->Asl.Value.Integer);
+            (UINT32) Op->Asl.Value.Integer);
         break;
 
     case PARSEOP_RAW_DATA:
@@ -400,12 +403,16 @@ CgGenerateAmlLengths (
         break;
 
     case PARSEOP_DEFAULT_ARG:
-    case PARSEOP_EXTERNAL:
     case PARSEOP_INCLUDE:
     case PARSEOP_INCLUDE_END:
 
         /* Ignore the "default arg" nodes, they are extraneous at this point */
 
+        break;
+
+    case PARSEOP_EXTERNAL:
+
+        CgGenerateAmlOpcodeLength (Op);
         break;
 
     default:
@@ -451,6 +458,6 @@ LnAdjustLengthToRoot (
 
     /* Adjust the global table length */
 
-    Gbl_TableLength -= LengthDelta;
+    AslGbl_TableLength -= LengthDelta;
 }
 #endif

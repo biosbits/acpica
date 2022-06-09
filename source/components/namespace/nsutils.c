@@ -6,7 +6,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,7 +31,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -90,7 +90,7 @@ AcpiNsPrintNodePathname (
 
     Buffer.Length = ACPI_ALLOCATE_LOCAL_BUFFER;
 
-    Status = AcpiNsHandleToPathname (Node, &Buffer, FALSE);
+    Status = AcpiNsHandleToPathname (Node, &Buffer, TRUE);
     if (ACPI_SUCCESS (Status))
     {
         if (Message)
@@ -98,7 +98,7 @@ AcpiNsPrintNodePathname (
             AcpiOsPrintf ("%s ", Message);
         }
 
-        AcpiOsPrintf ("[%s] (Node %p)", (char *) Buffer.Pointer, Node);
+        AcpiOsPrintf ("%s", (char *) Buffer.Pointer);
         ACPI_FREE (Buffer.Pointer);
     }
 }
@@ -196,9 +196,10 @@ AcpiNsGetInternalNameLength (
     Info->FullyQualified = FALSE;
 
     /*
-     * For the internal name, the required length is 4 bytes per segment, plus
-     * 1 each for RootPrefix, MultiNamePrefixOp, segment count, trailing null
-     * (which is not really needed, but no there's harm in putting it there)
+     * For the internal name, the required length is 4 bytes per segment,
+     * plus 1 each for RootPrefix, MultiNamePrefixOp, segment count,
+     * trailing null (which is not really needed, but no there's harm in
+     * putting it there)
      *
      * strlen() + 1 covers the first NameSeg, which has no path separator
      */
@@ -242,8 +243,8 @@ AcpiNsGetInternalNameLength (
         }
     }
 
-    Info->Length = (ACPI_NAME_SIZE * Info->NumSegments) +
-                    4 + Info->NumCarats;
+    Info->Length = (ACPI_NAMESEG_SIZE * Info->NumSegments) +
+        4 + Info->NumCarats;
 
     Info->NextExternalChar = NextExternalChar;
 }
@@ -293,7 +294,7 @@ AcpiNsBuildInternalName (
         }
         else
         {
-            InternalName[1] = AML_MULTI_NAME_PREFIX_OP;
+            InternalName[1] = AML_MULTI_NAME_PREFIX;
             InternalName[2] = (char) NumSegments;
             Result = &InternalName[3];
         }
@@ -324,7 +325,7 @@ AcpiNsBuildInternalName (
         }
         else
         {
-            InternalName[i] = AML_MULTI_NAME_PREFIX_OP;
+            InternalName[i] = AML_MULTI_NAME_PREFIX;
             InternalName[(ACPI_SIZE) i+1] = (char) NumSegments;
             Result = &InternalName[(ACPI_SIZE) i+2];
         }
@@ -334,7 +335,7 @@ AcpiNsBuildInternalName (
 
     for (; NumSegments; NumSegments--)
     {
-        for (i = 0; i < ACPI_NAME_SIZE; i++)
+        for (i = 0; i < ACPI_NAMESEG_SIZE; i++)
         {
             if (ACPI_IS_PATH_SEPARATOR (*ExternalName) ||
                (*ExternalName == 0))
@@ -363,7 +364,7 @@ AcpiNsBuildInternalName (
         /* Move on the next segment */
 
         ExternalName++;
-        Result += ACPI_NAME_SIZE;
+        Result += ACPI_NAMESEG_SIZE;
     }
 
     /* Terminate the string */
@@ -452,7 +453,7 @@ AcpiNsInternalizeName (
  *
  * FUNCTION:    AcpiNsExternalizeName
  *
- * PARAMETERS:  InternalNameLength  - Lenth of the internal name below
+ * PARAMETERS:  InternalNameLength  - Length of the internal name below
  *              InternalName        - Internal representation of name
  *              ConvertedNameLength - Where the length is returned
  *              ConvertedName       - Where the resulting external name
@@ -533,7 +534,7 @@ AcpiNsExternalizeName (
     {
         switch (InternalName[PrefixLength])
         {
-        case AML_MULTI_NAME_PREFIX_OP:
+        case AML_MULTI_NAME_PREFIX:
 
             /* <count> 4-byte names */
 
@@ -574,7 +575,7 @@ AcpiNsExternalizeName (
      * punctuation ('.') between object names, plus the NULL terminator.
      */
     RequiredLength = PrefixLength + (4 * NumSegments) +
-                        ((NumSegments > 0) ? (NumSegments - 1) : 0) + 1;
+        ((NumSegments > 0) ? (NumSegments - 1) : 0) + 1;
 
     /*
      * Check to see if we're still in bounds. If not, there's a problem
@@ -612,11 +613,12 @@ AcpiNsExternalizeName (
 
             /* Copy and validate the 4-char name segment */
 
-            ACPI_MOVE_NAME (&(*ConvertedName)[j], &InternalName[NamesIndex]);
+            ACPI_COPY_NAMESEG (&(*ConvertedName)[j],
+                &InternalName[NamesIndex]);
             AcpiUtRepairName (&(*ConvertedName)[j]);
 
-            j += ACPI_NAME_SIZE;
-            NamesIndex += ACPI_NAME_SIZE;
+            j += ACPI_NAMESEG_SIZE;
+            NamesIndex += ACPI_NAMESEG_SIZE;
         }
     }
 
@@ -751,6 +753,92 @@ AcpiNsOpensScope (
 
 /*******************************************************************************
  *
+ * FUNCTION:    AcpiNsGetNodeUnlocked
+ *
+ * PARAMETERS:  *Pathname   - Name to be found, in external (ASL) format. The
+ *                            \ (backslash) and ^ (carat) prefixes, and the
+ *                            . (period) to separate segments are supported.
+ *              PrefixNode   - Root of subtree to be searched, or NS_ALL for the
+ *                            root of the name space. If Name is fully
+ *                            qualified (first INT8 is '\'), the passed value
+ *                            of Scope will not be accessed.
+ *              Flags       - Used to indicate whether to perform upsearch or
+ *                            not.
+ *              ReturnNode  - Where the Node is returned
+ *
+ * DESCRIPTION: Look up a name relative to a given scope and return the
+ *              corresponding Node. NOTE: Scope can be null.
+ *
+ * MUTEX:       Doesn't locks namespace
+ *
+ ******************************************************************************/
+
+ACPI_STATUS
+AcpiNsGetNodeUnlocked (
+    ACPI_NAMESPACE_NODE     *PrefixNode,
+    const char              *Pathname,
+    UINT32                  Flags,
+    ACPI_NAMESPACE_NODE     **ReturnNode)
+{
+    ACPI_GENERIC_STATE      ScopeInfo;
+    ACPI_STATUS             Status;
+    char                    *InternalPath;
+
+
+    ACPI_FUNCTION_TRACE_PTR (NsGetNodeUnlocked, ACPI_CAST_PTR (char, Pathname));
+
+
+    /* Simplest case is a null pathname */
+
+    if (!Pathname)
+    {
+        *ReturnNode = PrefixNode;
+        if (!PrefixNode)
+        {
+            *ReturnNode = AcpiGbl_RootNode;
+        }
+
+        return_ACPI_STATUS (AE_OK);
+    }
+
+    /* Quick check for a reference to the root */
+
+    if (ACPI_IS_ROOT_PREFIX (Pathname[0]) && (!Pathname[1]))
+    {
+        *ReturnNode = AcpiGbl_RootNode;
+        return_ACPI_STATUS (AE_OK);
+    }
+
+    /* Convert path to internal representation */
+
+    Status = AcpiNsInternalizeName (Pathname, &InternalPath);
+    if (ACPI_FAILURE (Status))
+    {
+        return_ACPI_STATUS (Status);
+    }
+
+    /* Setup lookup scope (search starting point) */
+
+    ScopeInfo.Scope.Node = PrefixNode;
+
+    /* Lookup the name in the namespace */
+
+    Status = AcpiNsLookup (&ScopeInfo, InternalPath, ACPI_TYPE_ANY,
+        ACPI_IMODE_EXECUTE, (Flags | ACPI_NS_DONT_OPEN_SCOPE),
+        NULL, ReturnNode);
+    if (ACPI_FAILURE (Status))
+    {
+        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "%s, %s\n",
+            Pathname, AcpiFormatException (Status)));
+    }
+
+    ACPI_FREE (InternalPath);
+    return_ACPI_STATUS (Status);
+}
+
+
+/*******************************************************************************
+ *
  * FUNCTION:    AcpiNsGetNode
  *
  * PARAMETERS:  *Pathname   - Name to be found, in external (ASL) format. The
@@ -778,68 +866,21 @@ AcpiNsGetNode (
     UINT32                  Flags,
     ACPI_NAMESPACE_NODE     **ReturnNode)
 {
-    ACPI_GENERIC_STATE      ScopeInfo;
     ACPI_STATUS             Status;
-    char                    *InternalPath;
 
 
     ACPI_FUNCTION_TRACE_PTR (NsGetNode, ACPI_CAST_PTR (char, Pathname));
 
 
-    /* Simplest case is a null pathname */
-
-    if (!Pathname)
-    {
-        *ReturnNode = PrefixNode;
-        if (!PrefixNode)
-        {
-            *ReturnNode = AcpiGbl_RootNode;
-        }
-        return_ACPI_STATUS (AE_OK);
-    }
-
-    /* Quick check for a reference to the root */
-
-    if (ACPI_IS_ROOT_PREFIX (Pathname[0]) && (!Pathname[1]))
-    {
-        *ReturnNode = AcpiGbl_RootNode;
-        return_ACPI_STATUS (AE_OK);
-    }
-
-    /* Convert path to internal representation */
-
-    Status = AcpiNsInternalizeName (Pathname, &InternalPath);
+    Status = AcpiUtAcquireMutex (ACPI_MTX_NAMESPACE);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
     }
 
-    /* Must lock namespace during lookup */
-
-    Status = AcpiUtAcquireMutex (ACPI_MTX_NAMESPACE);
-    if (ACPI_FAILURE (Status))
-    {
-        goto Cleanup;
-    }
-
-    /* Setup lookup scope (search starting point) */
-
-    ScopeInfo.Scope.Node = PrefixNode;
-
-    /* Lookup the name in the namespace */
-
-    Status = AcpiNsLookup (&ScopeInfo, InternalPath, ACPI_TYPE_ANY,
-                ACPI_IMODE_EXECUTE, (Flags | ACPI_NS_DONT_OPEN_SCOPE),
-                NULL, ReturnNode);
-    if (ACPI_FAILURE (Status))
-    {
-        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "%s, %s\n",
-                Pathname, AcpiFormatException (Status)));
-    }
+    Status = AcpiNsGetNodeUnlocked (PrefixNode, Pathname,
+        Flags, ReturnNode);
 
     (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
-
-Cleanup:
-    ACPI_FREE (InternalPath);
     return_ACPI_STATUS (Status);
 }

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -76,9 +76,18 @@ AcpiHwSleepDispatch (
 
 static ACPI_SLEEP_FUNCTIONS         AcpiSleepDispatch[] =
 {
-    {ACPI_HW_OPTIONAL_FUNCTION (AcpiHwLegacySleep),    AcpiHwExtendedSleep},
-    {ACPI_HW_OPTIONAL_FUNCTION (AcpiHwLegacyWakePrep), AcpiHwExtendedWakePrep},
-    {ACPI_HW_OPTIONAL_FUNCTION (AcpiHwLegacyWake),     AcpiHwExtendedWake}
+    {ACPI_STRUCT_INIT (LegacyFunction,
+                       ACPI_HW_OPTIONAL_FUNCTION (AcpiHwLegacySleep)),
+     ACPI_STRUCT_INIT (ExtendedFunction,
+                       AcpiHwExtendedSleep) },
+    {ACPI_STRUCT_INIT (LegacyFunction,
+                       ACPI_HW_OPTIONAL_FUNCTION (AcpiHwLegacyWakePrep)),
+     ACPI_STRUCT_INIT (ExtendedFunction,
+                       AcpiHwExtendedWakePrep) },
+    {ACPI_STRUCT_INIT (LegacyFunction,
+                       ACPI_HW_OPTIONAL_FUNCTION (AcpiHwLegacyWake)),
+     ACPI_STRUCT_INIT (ExtendedFunction,
+                       AcpiHwExtendedWake) }
 };
 
 
@@ -97,7 +106,7 @@ static ACPI_SLEEP_FUNCTIONS         AcpiSleepDispatch[] =
  *              PhysicalAddress     - 32-bit physical address of ACPI real mode
  *                                    entry point
  *              PhysicalAddress64   - 64-bit physical address of ACPI protected
- *                                    entry point
+ *                                    mode entry point
  *
  * RETURN:      Status
  *
@@ -153,7 +162,7 @@ AcpiHwSetFirmwareWakingVector (
  * PARAMETERS:  PhysicalAddress     - 32-bit physical address of ACPI real mode
  *                                    entry point
  *              PhysicalAddress64   - 64-bit physical address of ACPI protected
- *                                    entry point
+ *                                    mode entry point
  *
  * RETURN:      Status
  *
@@ -169,22 +178,10 @@ AcpiSetFirmwareWakingVector (
 
     ACPI_FUNCTION_TRACE (AcpiSetFirmwareWakingVector);
 
-    /* If Hardware Reduced flag is set, there is no FACS */
-
-    if (AcpiGbl_ReducedHardware)
+    if (AcpiGbl_FACS)
     {
-        return_ACPI_STATUS (AE_OK);
-    }
-
-    if (AcpiGbl_Facs32)
-    {
-        (void) AcpiHwSetFirmwareWakingVector (AcpiGbl_Facs32,
-                    PhysicalAddress, PhysicalAddress64);
-    }
-    if (AcpiGbl_Facs64)
-    {
-        (void) AcpiHwSetFirmwareWakingVector (AcpiGbl_Facs64,
-                    PhysicalAddress, PhysicalAddress64);
+        (void) AcpiHwSetFirmwareWakingVector (AcpiGbl_FACS,
+            PhysicalAddress, PhysicalAddress64);
     }
 
     return_ACPI_STATUS (AE_OK);
@@ -232,7 +229,7 @@ AcpiEnterSleepStateS4bios (
     }
 
     /*
-     * 1) Disable/Clear all GPEs
+     * 1) Disable all GPEs
      * 2) Enable all wakeup GPEs
      */
     Status = AcpiHwDisableAllGpes ();
@@ -248,10 +245,12 @@ AcpiEnterSleepStateS4bios (
         return_ACPI_STATUS (Status);
     }
 
-    ACPI_FLUSH_CPU_CACHE ();
-
     Status = AcpiHwWritePort (AcpiGbl_FADT.SmiCommand,
-                (UINT32) AcpiGbl_FADT.S4BiosRequest, 8);
+        (UINT32) AcpiGbl_FADT.S4BiosRequest, 8);
+    if (ACPI_FAILURE (Status))
+    {
+        return_ACPI_STATUS (Status);
+    }
 
     do {
         AcpiOsStall (ACPI_USEC_PER_MSEC);
@@ -260,6 +259,7 @@ AcpiEnterSleepStateS4bios (
         {
             return_ACPI_STATUS (Status);
         }
+
     } while (!InValue);
 
     return_ACPI_STATUS (AE_OK);
@@ -355,10 +355,16 @@ AcpiEnterSleepStatePrep (
 
 
     Status = AcpiGetSleepTypeData (SleepState,
-                    &AcpiGbl_SleepTypeA, &AcpiGbl_SleepTypeB);
+        &AcpiGbl_SleepTypeA, &AcpiGbl_SleepTypeB);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
+    }
+
+    Status = AcpiGetSleepTypeData (ACPI_STATE_S0,
+        &AcpiGbl_SleepTypeAS0, &AcpiGbl_SleepTypeBS0);
+    if (ACPI_FAILURE (Status)) {
+        AcpiGbl_SleepTypeAS0 = ACPI_SLEEP_TYPE_INVALID;
     }
 
     /* Execute the _PTS method (Prepare To Sleep) */

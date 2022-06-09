@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -43,11 +43,12 @@
 
 #include "acpihelp.h"
 
+
 /*
  * AML opcodes with related syntax and grammar information.
  * This table was extracted from the ACPI specification.
  */
-const AH_AML_OPCODE         AmlOpcodeInfo[] =
+const AH_AML_OPCODE         Gbl_AmlOpcodeInfo[] =
 {
     {0x00,   0x00,   "0x00",            "ZeroOp",               "DataObject",   NULL,                                           NULL,
                                                                 NULL},
@@ -147,14 +148,14 @@ const AH_AML_OPCODE         AmlOpcodeInfo[] =
                                                                 "DefOpRegion := OpRegionOp NameString RegionSpace RegionOffset RegionLen"},
     {0x5B81, 0x5B81, "0x5B81",          "FieldOp",              "TermObject",   "NameString ByteData",                          "FieldList",
                                                                 "DefField := FieldOp PkgLength NameString FieldFlags FieldList"},
-    {0x5B82, 0x5B82, "0x5B82",          "DeviceOp",             "TermObject",   "NameString",                                   "ObjectList",
-                                                                "DefDevice := DeviceOp PkgLength NameString ObjectList"},
-    {0x5B83, 0x5B83, "0x5B83",          "ProcessorOp",          "TermObject",   "NameString ByteData DWordData ByteData",       "ObjectList",
-                                                                "DefProcessor := ProcessorOp PkgLength NameString ProcId PblkAddr PblkLen ObjectList"},
-    {0x5B84, 0x5B84, "0x5B84",          "PowerResOp",           "TermObject",   "NameString ByteData WordData",                 "ObjectList",
-                                                                "DefPowerRes := PowerResOp PkgLength NameString SystemLevel ResourceOrder ObjectList"},
-    {0x5B85, 0x5B85, "0x5B85",          "ThermalZoneOp",        "TermObject",   "NameString",                                   "ObjectList",
-                                                                "DefThermalZone := ThermalZoneOp PkgLength NameString ObjectList"},
+    {0x5B82, 0x5B82, "0x5B82",          "DeviceOp",             "TermObject",   "NameString",                                   "TermList",
+                                                                "DefDevice := DeviceOp PkgLength NameString TermList"},
+    {0x5B83, 0x5B83, "0x5B83",          "ProcessorOp",          "TermObject",   "NameString ByteData DWordData ByteData",       "TermList",
+                                                                "DefProcessor := ProcessorOp PkgLength NameString ProcId PblkAddr PblkLen TermList"},
+    {0x5B84, 0x5B84, "0x5B84",          "PowerResOp",           "TermObject",   "NameString ByteData WordData",                 "TermList",
+                                                                "DefPowerRes := PowerResOp PkgLength NameString SystemLevel ResourceOrder TermList"},
+    {0x5B85, 0x5B85, "0x5B85",          "ThermalZoneOp",        "TermObject",   "NameString",                                   "TermList",
+                                                                "DefThermalZone := ThermalZoneOp PkgLength NameString TermList"},
     {0x5B86, 0x5B86, "0x5B86",          "IndexFieldOp",         "TermObject",   "NameString NameString ByteData",               "FieldList",
                                                                 "DefIndexField := IndexFieldOp PkgLength NameString NameString FieldFlags FieldList"},
     {0x5B87, 0x5B87, "0x5B87",          "BankFieldOp",          "TermObject",   "NameString NameString TermArg ByteData",       "FieldList",

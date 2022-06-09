@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -127,6 +127,11 @@ RsDoGeneralRegisterDescriptor (
             RsCreateByteField (InitializerOp, ACPI_RESTAG_ACCESSSIZE,
                 CurrentByteOffset + ASL_RESDESC_OFFSET (GenericReg.AccessSize));
 
+            if (Descriptor->GenericReg.AddressSpaceId == ACPI_ADR_SPACE_PLATFORM_COMM)
+            {
+                break;
+            }
+
             if (Descriptor->GenericReg.AccessSize > AML_FIELD_ACCESS_QWORD)
             {
                 AslError (ASL_ERROR, ASL_MSG_INVALID_ACCESS_SIZE,
@@ -147,6 +152,7 @@ RsDoGeneralRegisterDescriptor (
 
         InitializerOp = RsCompleteNodeAndGetNext (InitializerOp);
     }
+
     return (Rnode);
 }
 
@@ -213,7 +219,7 @@ RsDoInterruptDescriptor (
         1 + OptionIndex + StringLength);
 
     Descriptor = Rnode->Buffer;
-    Descriptor->ExtendedIrq.DescriptorType  = ACPI_RESOURCE_NAME_EXTENDED_IRQ;
+    Descriptor->ExtendedIrq.DescriptorType = ACPI_RESOURCE_NAME_EXTENDED_IRQ;
 
     /*
      * Initial descriptor length -- may be enlarged if there are
@@ -223,7 +229,7 @@ RsDoInterruptDescriptor (
     Descriptor->ExtendedIrq.InterruptCount  = 0;
 
     Rover = ACPI_CAST_PTR (AML_RESOURCE,
-                (&(Descriptor->ExtendedIrq.Interrupts[0])));
+        (&(Descriptor->ExtendedIrq.Interrupts[0])));
 
     /* Process all child initialization nodes */
 
@@ -373,18 +379,16 @@ RsDoInterruptDescriptor (
 
     if (StringLength && ResSourceString)
     {
-
         strcpy ((char *) Rover, (char *) ResSourceString);
-        Rover = ACPI_ADD_PTR (
-                    AML_RESOURCE, &(Rover->ByteItem), StringLength);
 
         Descriptor->ExtendedIrq.ResourceLength = (UINT16)
             (Descriptor->ExtendedIrq.ResourceLength + StringLength);
     }
 
-    Rnode->BufferLength = (ASL_RESDESC_OFFSET (ExtendedIrq.Interrupts[0]) -
-                           ASL_RESDESC_OFFSET (ExtendedIrq.DescriptorType))
-                           + OptionIndex + StringLength;
+    Rnode->BufferLength =
+        (ASL_RESDESC_OFFSET (ExtendedIrq.Interrupts[0]) -
+        ASL_RESDESC_OFFSET (ExtendedIrq.DescriptorType))
+        + OptionIndex + StringLength;
     return (Rnode);
 }
 
@@ -431,7 +435,7 @@ RsDoVendorLargeDescriptor (
     Rnode = RsAllocateResourceNode (sizeof (AML_RESOURCE_VENDOR_LARGE) + i);
 
     Descriptor = Rnode->Buffer;
-    Descriptor->VendorLarge.DescriptorType  = ACPI_RESOURCE_NAME_VENDOR_LARGE;
+    Descriptor->VendorLarge.DescriptorType = ACPI_RESOURCE_NAME_VENDOR_LARGE;
     Descriptor->VendorLarge.ResourceLength = (UINT16) i;
 
     /* Point to end-of-descriptor for vendor data */

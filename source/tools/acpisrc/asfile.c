@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -42,7 +42,6 @@
  */
 
 #include "acpisrc.h"
-#include "acapps.h"
 
 /* Local prototypes */
 
@@ -59,6 +58,11 @@ BOOLEAN
 AsDetectLoneLineFeeds (
     char                    *Filename,
     char                    *Buffer);
+
+static BOOLEAN
+AsCheckForNonPrintableChars (
+    char                    *FileBuffer,
+    UINT32                  FileSize);
 
 static ACPI_INLINE int
 AsMaxInt (int a, int b)
@@ -123,7 +127,7 @@ AsDoWildcard (
                 /* If we actually have a dir, process the subtree */
 
                 if (!AsCheckForDirectory (SourcePath, TargetPath, Filename,
-                        &SourceDirPath, &TargetDirPath))
+                    &SourceDirPath, &TargetDirPath))
                 {
                     VERBOSE_PRINT (("Subdirectory: %s\n", Filename));
 
@@ -140,7 +144,7 @@ AsDoWildcard (
                 VERBOSE_PRINT (("File: %s\n", Filename));
 
                 AsProcessOneFile (ConversionTable, SourcePath, TargetPath,
-                        MaxPathLength, Filename, FileType);
+                    MaxPathLength, Filename, FileType);
                 break;
 
             default:
@@ -197,32 +201,32 @@ AsProcessTree (
     /* Do the C source files */
 
     AsDoWildcard (ConversionTable, SourcePath, TargetPath, MaxPathLength,
-            FILE_TYPE_SOURCE, "*.c");
+        FILE_TYPE_SOURCE, "*.c");
 
     /* Do the C header files */
 
     AsDoWildcard (ConversionTable, SourcePath, TargetPath, MaxPathLength,
-            FILE_TYPE_HEADER, "*.h");
+        FILE_TYPE_HEADER, "*.h");
 
     /* Do the Lex file(s) */
 
     AsDoWildcard (ConversionTable, SourcePath, TargetPath, MaxPathLength,
-            FILE_TYPE_SOURCE, "*.l");
+        FILE_TYPE_SOURCE, "*.l");
 
     /* Do the yacc file(s) */
 
     AsDoWildcard (ConversionTable, SourcePath, TargetPath, MaxPathLength,
-            FILE_TYPE_SOURCE, "*.y");
+        FILE_TYPE_SOURCE, "*.y");
 
     /* Do any ASL files */
 
     AsDoWildcard (ConversionTable, SourcePath, TargetPath, MaxPathLength,
-            FILE_TYPE_HEADER, "*.asl");
+        FILE_TYPE_HEADER, "*.asl");
 
     /* Do any subdirectories */
 
     AsDoWildcard (ConversionTable, SourcePath, TargetPath, MaxPathLength,
-            FILE_TYPE_DIRECTORY, "*");
+        FILE_TYPE_DIRECTORY, "*");
 
     return (0);
 }
@@ -259,6 +263,7 @@ AsDetectLoneLineFeeds (
             {
                 LfCount++;
             }
+
             LineCount++;
         }
         i++;
@@ -278,6 +283,7 @@ AsDetectLoneLineFeeds (
         {
             printf ("%s: %u lone linefeeds in file\n", Filename, LfCount);
         }
+
         return (TRUE);
     }
 
@@ -308,6 +314,7 @@ AsConvertFile (
     ACPI_IDENTIFIER_TABLE   *LineTable;
     ACPI_TYPED_IDENTIFIER_TABLE *StructTable;
     ACPI_IDENTIFIER_TABLE   *SpecialMacroTable;
+    char                    *SpdxHeader=NULL;
 
 
     switch (FileType)
@@ -320,7 +327,8 @@ AsConvertFile (
         ConditionalTable    = ConversionTable->SourceConditionalTable;
         StructTable         = ConversionTable->SourceStructTable;
         SpecialMacroTable   = ConversionTable->SourceSpecialMacroTable;
-       break;
+        SpdxHeader          = ConversionTable->SourceSpdxHeader;
+        break;
 
     case FILE_TYPE_HEADER:
 
@@ -330,6 +338,7 @@ AsConvertFile (
         ConditionalTable    = ConversionTable->HeaderConditionalTable;
         StructTable         = ConversionTable->HeaderStructTable;
         SpecialMacroTable   = ConversionTable->HeaderSpecialMacroTable;
+        SpdxHeader          = ConversionTable->HeaderSpdxHeader;
         break;
 
     case FILE_TYPE_PATCH:
@@ -365,7 +374,7 @@ AsConvertFile (
         for (i = 0; ConversionTable->LowerCaseTable[i].Identifier; i++)
         {
             AsLowerCaseString (ConversionTable->LowerCaseTable[i].Identifier,
-                                FileBuffer);
+                FileBuffer);
         }
     }
 
@@ -376,7 +385,7 @@ AsConvertFile (
         for (i = 0; StringTable[i].Target; i++)
         {
             AsReplaceString (StringTable[i].Target, StringTable[i].Replacement,
-                    StringTable[i].Type, FileBuffer);
+                StringTable[i].Type, FileBuffer);
         }
     }
 
@@ -410,7 +419,8 @@ AsConvertFile (
     {
         for (i = 0; StructTable[i].Identifier; i++)
         {
-            AsInsertPrefix (FileBuffer, StructTable[i].Identifier, StructTable[i].Type);
+            AsInsertPrefix (FileBuffer, StructTable[i].Identifier,
+                StructTable[i].Type);
         }
     }
 
@@ -428,7 +438,7 @@ AsConvertFile (
     {
         /* Decode the function bitmap */
 
-        switch ((1 << i) & Functions)
+        switch (((UINT32) 1 << i) & Functions)
         {
         case 0:
 
@@ -524,6 +534,49 @@ AsConvertFile (
     {
         AsReplaceHeader (FileBuffer, ConversionTable->NewHeader);
     }
+    if (SpdxHeader)
+    {
+        AsDoSpdxHeader (FileBuffer, SpdxHeader);
+    }
+}
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AsCheckForNonPrintableChars
+ *
+ * PARAMETERS:  FileBuffer              - Buffer with contents of entire file
+ *              FileSize                - Size of the file and buffer
+ *
+ * RETURN:      TRUE if there are no non-printable characters
+ *
+ * DESCRIPTION: Scan a file for any non-printable ASCII bytes.
+ *
+ ******************************************************************************/
+
+static BOOLEAN
+AsCheckForNonPrintableChars (
+    char                    *FileBuffer,
+    UINT32                  FileSize)
+{
+    BOOLEAN                 Found = TRUE;
+    UINT8                   Byte;
+    UINT32                  i;
+
+
+    /* Scan entire file for any non-printable characters */
+
+    for (i = 0; i < FileSize; i++)
+    {
+        Byte = FileBuffer[i];
+        if (!isprint (Byte) && !isspace (Byte))
+        {
+            printf ( "Non-printable character (0x%2.2X) "
+                "at file offset: %8u (0x%X)\n", Byte, i, i);
+            Found = FALSE;
+        }
+    }
+
+    return (Found);
 }
 
 
@@ -546,7 +599,8 @@ AsProcessOneFile (
     ACPI_NATIVE_INT         FileType)
 {
     char                    *Pathname;
-    char                    *OutPathname = NULL;
+    char                    *OutPathname;
+    int                     Status = 0;
 
 
     /* Allocate a file pathname buffer for both source and target */
@@ -569,10 +623,18 @@ AsProcessOneFile (
     }
 
     strcat (Pathname, Filename);
-
     if (AsGetFile (Pathname, &Gbl_FileBuffer, &Gbl_FileSize))
     {
-        return (-1);
+        Status = -1;
+        goto Exit1;
+    }
+
+    /* Exit now if simply checking the file for printable ascii chars */
+
+    if (Gbl_CheckAscii)
+    {
+        Status = 0;
+        goto Exit2;
     }
 
     Gbl_HeaderSize = 0;
@@ -610,11 +672,13 @@ AsProcessOneFile (
         {
             /* Generate the target pathname and write the file */
 
-            OutPathname = calloc (MaxPathLength + strlen (Filename) + 2 + strlen (TargetPath), 1);
+            OutPathname = calloc (MaxPathLength +
+                strlen (Filename) + 2 + strlen (TargetPath), 1);
             if (!OutPathname)
             {
                 printf ("Could not allocate buffer for file pathnames\n");
-                return (-1);
+                Status = -1;
+                goto Exit2;
             }
 
             strcpy (OutPathname, TargetPath);
@@ -625,17 +689,16 @@ AsProcessOneFile (
             }
 
             AsPutFile (OutPathname, Gbl_FileBuffer, ConversionTable->Flags);
+            free (OutPathname);
         }
     }
 
+Exit2:
     free (Gbl_FileBuffer);
-    free (Pathname);
-    if (OutPathname)
-    {
-        free (OutPathname);
-    }
 
-    return (0);
+Exit1:
+    free (Pathname);
+    return (Status);
 }
 
 
@@ -754,11 +817,24 @@ AsGetFile (
     {
         printf ("Could not read the input file %s (%u bytes)\n",
             Filename, Size);
-        goto ErrorExit;
+        goto ErrorFree;
     }
 
     Buffer [Size] = 0;         /* Null terminate the buffer */
     fclose (File);
+
+    /* This option checks the entire file for non-printable chars */
+
+    if (Gbl_CheckAscii)
+    {
+        if (AsCheckForNonPrintableChars (Buffer, Size))
+        {
+            printf ("File contains only printable ASCII characters\n");
+        }
+
+        free (Buffer);
+        return (0);
+    }
 
     /* Check for unix contamination */
 
@@ -774,9 +850,10 @@ AsGetFile (
     *FileSize = Size;
     return (0);
 
+ErrorFree:
+    free (Buffer);
 
 ErrorExit:
-
     fclose (File);
     return (-1);
 }

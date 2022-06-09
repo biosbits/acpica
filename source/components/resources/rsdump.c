@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -51,38 +51,37 @@
 /*
  * All functions in this module are used by the AML Debugger only
  */
-#if defined(ACPI_DEBUGGER)
 
 /* Local prototypes */
 
 static void
 AcpiRsOutString (
-    char                    *Title,
-    char                    *Value);
+    const char              *Title,
+    const char              *Value);
 
 static void
 AcpiRsOutInteger8 (
-    char                    *Title,
+    const char              *Title,
     UINT8                   Value);
 
 static void
 AcpiRsOutInteger16 (
-    char                    *Title,
+    const char              *Title,
     UINT16                  Value);
 
 static void
 AcpiRsOutInteger32 (
-    char                    *Title,
+    const char              *Title,
     UINT32                  Value);
 
 static void
 AcpiRsOutInteger64 (
-    char                    *Title,
+    const char              *Title,
     UINT64                  Value);
 
 static void
 AcpiRsOutTitle (
-    char                    *Title);
+    const char              *Title);
 
 static void
 AcpiRsDumpByteList (
@@ -107,6 +106,11 @@ AcpiRsDumpShortByteList (
 static void
 AcpiRsDumpResourceSource (
     ACPI_RESOURCE_SOURCE    *ResourceSource);
+
+static void
+AcpiRsDumpResourceLabel (
+    char                   *Title,
+    ACPI_RESOURCE_LABEL    *ResourceLabel);
 
 static void
 AcpiRsDumpAddressCommon (
@@ -163,6 +167,11 @@ AcpiRsDumpResourceList (
             AcpiOsPrintf (
                 "Invalid descriptor type (%X) in resource list\n",
                 ResourceList->Type);
+            return;
+        }
+        else if (!ResourceList->Type)
+        {
+            ACPI_ERROR ((AE_INFO, "Invalid Zero Resource Type"));
             return;
         }
 
@@ -264,8 +273,8 @@ AcpiRsDumpDescriptor (
 {
     UINT8                   *Target = NULL;
     UINT8                   *PreviousTarget;
-    char                    *Name;
-    UINT8                    Count;
+    const char              *Name;
+    UINT8                   Count;
 
 
     /* First table entry must contain the table length (# of table entries) */
@@ -308,8 +317,7 @@ AcpiRsDumpDescriptor (
 
             if (Table->Pointer)
             {
-                AcpiRsOutString (Name, ACPI_CAST_PTR (char,
-                    Table->Pointer [*Target]));
+                AcpiRsOutString (Name, Table->Pointer [*Target]);
             }
             else
             {
@@ -336,20 +344,22 @@ AcpiRsDumpDescriptor (
 
         case ACPI_RSD_1BITFLAG:
 
-            AcpiRsOutString (Name, ACPI_CAST_PTR (char,
-                Table->Pointer [*Target & 0x01]));
+            AcpiRsOutString (Name, Table->Pointer [*Target & 0x01]);
             break;
 
         case ACPI_RSD_2BITFLAG:
 
-            AcpiRsOutString (Name, ACPI_CAST_PTR (char,
-                Table->Pointer [*Target & 0x03]));
+            AcpiRsOutString (Name, Table->Pointer [*Target & 0x03]);
             break;
 
         case ACPI_RSD_3BITFLAG:
 
-            AcpiRsOutString (Name, ACPI_CAST_PTR (char,
-                Table->Pointer [*Target & 0x07]));
+            AcpiRsOutString (Name, Table->Pointer [*Target & 0x07]);
+            break;
+
+        case ACPI_RSD_6BITFLAG:
+
+            AcpiRsOutInteger8 (Name, (ACPI_GET8 (Target) & 0x3F));
             break;
 
         case ACPI_RSD_SHORTLIST:
@@ -428,6 +438,22 @@ AcpiRsDumpDescriptor (
                 ACPI_RESOURCE_SOURCE, Target));
             break;
 
+        case ACPI_RSD_LABEL:
+            /*
+             * ResourceLabel
+             */
+            AcpiRsDumpResourceLabel ("Resource Label", ACPI_CAST_PTR (
+                ACPI_RESOURCE_LABEL, Target));
+            break;
+
+        case ACPI_RSD_SOURCE_LABEL:
+            /*
+             * ResourceSourceLabel
+             */
+            AcpiRsDumpResourceLabel ("Resource Source Label", ACPI_CAST_PTR (
+                ACPI_RESOURCE_LABEL, Target));
+            break;
+
         default:
 
             AcpiOsPrintf ("**** Invalid table opcode [%X] ****\n",
@@ -472,6 +498,32 @@ AcpiRsDumpResourceSource (
     AcpiRsOutString ("Resource Source",
         ResourceSource->StringPtr ?
             ResourceSource->StringPtr : "[Not Specified]");
+}
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiRsDumpResourceLabel
+ *
+ * PARAMETERS:  Title              - Title of the dumped resource field
+ *              ResourceLabel      - Pointer to a Resource Label struct
+ *
+ * RETURN:      None
+ *
+ * DESCRIPTION: Common routine for dumping the ResourceLabel
+ *
+ ******************************************************************************/
+
+static void
+AcpiRsDumpResourceLabel (
+    char                   *Title,
+    ACPI_RESOURCE_LABEL    *ResourceLabel)
+{
+    ACPI_FUNCTION_ENTRY ();
+
+    AcpiRsOutString (Title,
+        ResourceLabel->StringPtr ?
+            ResourceLabel->StringPtr : "[Not Specified]");
 }
 
 
@@ -543,9 +595,10 @@ AcpiRsDumpAddressCommon (
 
 static void
 AcpiRsOutString (
-    char                    *Title,
-    char                    *Value)
+    const char              *Title,
+    const char              *Value)
 {
+
     AcpiOsPrintf ("%27s : %s", Title, Value);
     if (!*Value)
     {
@@ -556,7 +609,7 @@ AcpiRsOutString (
 
 static void
 AcpiRsOutInteger8 (
-    char                    *Title,
+    const char              *Title,
     UINT8                   Value)
 {
     AcpiOsPrintf ("%27s : %2.2X\n", Title, Value);
@@ -564,33 +617,37 @@ AcpiRsOutInteger8 (
 
 static void
 AcpiRsOutInteger16 (
-    char                    *Title,
+    const char              *Title,
     UINT16                  Value)
 {
+
     AcpiOsPrintf ("%27s : %4.4X\n", Title, Value);
 }
 
 static void
 AcpiRsOutInteger32 (
-    char                    *Title,
+    const char              *Title,
     UINT32                  Value)
 {
+
     AcpiOsPrintf ("%27s : %8.8X\n", Title, Value);
 }
 
 static void
 AcpiRsOutInteger64 (
-    char                    *Title,
+    const char              *Title,
     UINT64                  Value)
 {
+
     AcpiOsPrintf ("%27s : %8.8X%8.8X\n", Title,
         ACPI_FORMAT_UINT64 (Value));
 }
 
 static void
 AcpiRsOutTitle (
-    char                    *Title)
+    const char              *Title)
 {
+
     AcpiOsPrintf ("%27s : ", Title);
 }
 
@@ -613,13 +670,12 @@ AcpiRsDumpByteList (
     UINT16                  Length,
     UINT8                   *Data)
 {
-    UINT8                   i;
+    UINT16                  i;
 
 
     for (i = 0; i < Length; i++)
     {
-        AcpiOsPrintf ("%25s%2.2X : %2.2X\n",
-            "Byte", i, Data[i]);
+        AcpiOsPrintf ("%25s%2.2X : %2.2X\n", "Byte", i, Data[i]);
     }
 }
 
@@ -635,6 +691,7 @@ AcpiRsDumpShortByteList (
     {
         AcpiOsPrintf ("%X ", Data[i]);
     }
+
     AcpiOsPrintf ("\n");
 }
 
@@ -648,8 +705,7 @@ AcpiRsDumpDwordList (
 
     for (i = 0; i < Length; i++)
     {
-        AcpiOsPrintf ("%25s%2.2X : %8.8X\n",
-            "Dword", i, Data[i]);
+        AcpiOsPrintf ("%25s%2.2X : %8.8X\n", "Dword", i, Data[i]);
     }
 }
 
@@ -663,9 +719,6 @@ AcpiRsDumpWordList (
 
     for (i = 0; i < Length; i++)
     {
-        AcpiOsPrintf ("%25s%2.2X : %4.4X\n",
-            "Word", i, Data[i]);
+        AcpiOsPrintf ("%25s%2.2X : %4.4X\n", "Word", i, Data[i]);
     }
 }
-
-#endif

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -85,7 +85,8 @@ ACPI_STATUS
 AcpiTbAcquireTempTable (
     ACPI_TABLE_DESC         *TableDesc,
     ACPI_PHYSICAL_ADDRESS   Address,
-    UINT8                   Flags);
+    UINT8                   Flags,
+    ACPI_TABLE_HEADER       *Table);
 
 void
 AcpiTbReleaseTempTable (
@@ -98,7 +99,8 @@ AcpiTbValidateTempTable (
 ACPI_STATUS
 AcpiTbVerifyTempTable (
     ACPI_TABLE_DESC         *TableDesc,
-    char                    *Signature);
+    char                    *Signature,
+    UINT32                  *TableIndex);
 
 BOOLEAN
 AcpiTbIsTableLoaded (
@@ -115,7 +117,7 @@ AcpiTbSetTableLoadedFlag (
  */
 void
 AcpiTbParseFadt (
-    UINT32                  TableIndex);
+    void);
 
 void
 AcpiTbCreateLocalFadt (
@@ -170,6 +172,7 @@ ACPI_STATUS
 AcpiTbInstallStandardTable (
     ACPI_PHYSICAL_ADDRESS   Address,
     UINT8                   Flags,
+    ACPI_TABLE_HEADER       *Table,
     BOOLEAN                 Reload,
     BOOLEAN                 Override,
     UINT32                  *TableIndex);
@@ -177,6 +180,28 @@ AcpiTbInstallStandardTable (
 void
 AcpiTbUninstallTable (
     ACPI_TABLE_DESC        *TableDesc);
+
+ACPI_STATUS
+AcpiTbLoadTable (
+    UINT32                  TableIndex,
+    ACPI_NAMESPACE_NODE     *ParentNode);
+
+ACPI_STATUS
+AcpiTbInstallAndLoadTable (
+    ACPI_PHYSICAL_ADDRESS   Address,
+    UINT8                   Flags,
+    ACPI_TABLE_HEADER       *Table,
+    BOOLEAN                 Override,
+    UINT32                  *TableIndex);
+
+ACPI_STATUS
+AcpiTbUnloadTable (
+    UINT32                  TableIndex);
+
+void
+AcpiTbNotifyTable (
+    UINT32                          Event,
+    void                            *Table);
 
 void
 AcpiTbTerminate (
@@ -207,10 +232,6 @@ ACPI_STATUS
 AcpiTbInitializeFacs (
     void);
 
-BOOLEAN
-AcpiTbTablesLoaded (
-    void);
-
 void
 AcpiTbPrintTableHeader(
     ACPI_PHYSICAL_ADDRESS   Address,
@@ -236,18 +257,29 @@ AcpiTbCopyDsdt (
 
 void
 AcpiTbInstallTableWithOverride (
-    UINT32                  TableIndex,
     ACPI_TABLE_DESC         *NewTableDesc,
-    BOOLEAN                 Override);
-
-ACPI_STATUS
-AcpiTbInstallFixedTable (
-    ACPI_PHYSICAL_ADDRESS   Address,
-    char                    *Signature,
-    UINT32                  TableIndex);
+    BOOLEAN                 Override,
+    UINT32                  *TableIndex);
 
 ACPI_STATUS
 AcpiTbParseRootTable (
     ACPI_PHYSICAL_ADDRESS   RsdpAddress);
+
+ACPI_STATUS
+AcpiTbGetTable (
+    ACPI_TABLE_DESC        *TableDesc,
+    ACPI_TABLE_HEADER      **OutTable);
+
+void
+AcpiTbPutTable (
+    ACPI_TABLE_DESC        *TableDesc);
+
+
+/*
+ * tbxfload
+ */
+ACPI_STATUS
+AcpiTbLoadNamespace (
+    void);
 
 #endif /* __ACTABLES_H__ */

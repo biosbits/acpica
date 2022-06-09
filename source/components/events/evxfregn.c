@@ -6,7 +6,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,7 +31,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -114,48 +114,16 @@ AcpiInstallAddressSpaceHandler (
 
     /* Install the handler for all Regions for this Space ID */
 
-    Status = AcpiEvInstallSpaceHandler (Node, SpaceId, Handler, Setup, Context);
+    Status = AcpiEvInstallSpaceHandler (
+        Node, SpaceId, Handler, Setup, Context);
     if (ACPI_FAILURE (Status))
     {
         goto UnlockAndExit;
     }
 
-    /*
-     * For the default SpaceIDs, (the IDs for which there are default region handlers
-     * installed) Only execute the _REG methods if the global initialization _REG
-     * methods have already been run (via AcpiInitializeObjects). In other words,
-     * we will defer the execution of the _REG methods for these SpaceIDs until
-     * execution of AcpiInitializeObjects. This is done because we need the handlers
-     * for the default spaces (mem/io/pci/table) to be installed before we can run
-     * any control methods (or _REG methods). There is known BIOS code that depends
-     * on this.
-     *
-     * For all other SpaceIDs, we can safely execute the _REG methods immediately.
-     * This means that for IDs like EmbeddedController, this function should be called
-     * only after AcpiEnableSubsystem has been called.
-     */
-    switch (SpaceId)
-    {
-    case ACPI_ADR_SPACE_SYSTEM_MEMORY:
-    case ACPI_ADR_SPACE_SYSTEM_IO:
-    case ACPI_ADR_SPACE_PCI_CONFIG:
-    case ACPI_ADR_SPACE_DATA_TABLE:
-
-        if (!AcpiGbl_RegMethodsExecuted)
-        {
-            /* We will defer execution of the _REG methods for this space */
-            goto UnlockAndExit;
-        }
-        break;
-
-    default:
-
-        break;
-    }
-
     /* Run all _REG methods for this address space */
 
-    Status = AcpiEvExecuteRegMethods (Node, SpaceId);
+    AcpiEvExecuteRegMethods (Node, SpaceId, ACPI_REG_CONNECT);
 
 
 UnlockAndExit:
@@ -234,8 +202,8 @@ AcpiRemoveAddressSpaceHandler (
 
     /* Find the address handler the user requested */
 
-    HandlerObj = ObjDesc->Device.Handler;
-    LastObjPtr = &ObjDesc->Device.Handler;
+    HandlerObj = ObjDesc->CommonNotify.Handler;
+    LastObjPtr = &ObjDesc->CommonNotify.Handler;
     while (HandlerObj)
     {
         /* We have a handler, see if user requested this one */
@@ -278,7 +246,6 @@ AcpiRemoveAddressSpaceHandler (
                  * DetachRegion removed the previous head.
                  */
                 RegionObj = HandlerObj->AddressSpace.RegionList;
-
             }
 
             /* Remove this Handler object from the list */
@@ -287,6 +254,7 @@ AcpiRemoveAddressSpaceHandler (
 
             /* Now we can delete the handler object */
 
+            AcpiOsReleaseMutex (HandlerObj->AddressSpace.ContextMutex);
             AcpiUtRemoveReference (HandlerObj);
             goto UnlockAndExit;
         }

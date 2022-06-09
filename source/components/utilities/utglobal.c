@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -87,6 +87,12 @@ const char                  *AcpiGbl_HighestDstateNames[ACPI_NUM_SxD_METHODS] =
 };
 
 
+/* Hex-to-ascii */
+
+const char                  AcpiGbl_LowerHexDigits[] = "0123456789abcdef";
+const char                  AcpiGbl_UpperHexDigits[] = "0123456789ABCDEF";
+
+
 /*******************************************************************************
  *
  * Namespace globals
@@ -121,10 +127,7 @@ const ACPI_PREDEFINED_NAMES     AcpiGbl_PreDefinedNames[] =
     {"_REV",    ACPI_TYPE_INTEGER,          ACPI_CAST_PTR (char, 2)},
     {"_OS_",    ACPI_TYPE_STRING,           ACPI_OS_NAME},
     {"_GL_",    ACPI_TYPE_MUTEX,            ACPI_CAST_PTR (char, 1)},
-
-#if !defined (ACPI_NO_METHOD_EXECUTION) || defined (ACPI_CONSTANT_EVAL_ONLY)
     {"_OSI",    ACPI_TYPE_METHOD,           ACPI_CAST_PTR (char, 1)},
-#endif
 
     /* Table terminator */
 
@@ -178,6 +181,55 @@ ACPI_FIXED_EVENT_INFO       AcpiGbl_FixedEventInfo[ACPI_NUM_FIXED_EVENTS] =
     /* ACPI_EVENT_RTC           */  {ACPI_BITREG_RT_CLOCK_STATUS,       ACPI_BITREG_RT_CLOCK_ENABLE,     ACPI_BITMASK_RT_CLOCK_STATUS,       ACPI_BITMASK_RT_CLOCK_ENABLE},
 };
 #endif /* !ACPI_REDUCED_HARDWARE */
+
+
+#if defined (ACPI_DISASSEMBLER) || defined (ACPI_ASL_COMPILER)
+
+/* ToPld macro: compile/disassemble strings */
+
+const char              *AcpiGbl_PldPanelList[] =
+{
+    "TOP",
+    "BOTTOM",
+    "LEFT",
+    "RIGHT",
+    "FRONT",
+    "BACK",
+    "UNKNOWN",
+    NULL
+};
+
+const char              *AcpiGbl_PldVerticalPositionList[] =
+{
+    "UPPER",
+    "CENTER",
+    "LOWER",
+    NULL
+};
+
+const char              *AcpiGbl_PldHorizontalPositionList[] =
+{
+    "LEFT",
+    "CENTER",
+    "RIGHT",
+    NULL
+};
+
+const char              *AcpiGbl_PldShapeList[] =
+{
+    "ROUND",
+    "OVAL",
+    "SQUARE",
+    "VERTICALRECTANGLE",
+    "HORIZONTALRECTANGLE",
+    "VERTICALTRAPEZOID",
+    "HORIZONTALTRAPEZOID",
+    "UNKNOWN",
+    "CHAMFERED",
+    NULL
+};
+#endif
+
 
 /* Public globals */
 

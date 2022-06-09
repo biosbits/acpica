@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -48,13 +48,13 @@
 /*
  * Compiler versions and names
  */
-#define ASL_COMPILER_NAME           "ASL+ Optimizing Compiler"
+#define ASL_COMPILER_NAME           "ASL+ Optimizing Compiler/Disassembler"
 #define AML_DISASSEMBLER_NAME       "AML/ASL+ Disassembler"
 #define ASL_INVOCATION_NAME         "iasl"
 #define ASL_CREATOR_ID              "INTL"
 #define ASL_DEFINE                  "__IASL__"
-
-#define ASL_COMPLIANCE              "Supports ACPI Specification Revision 6.0"
+#define ASL_PREFIX                  "iASL: "
+#define ASL_COMPLIANCE              "Supports ACPI Specification Revision 6.3"
 
 
 /* Configuration constants */
@@ -104,42 +104,22 @@
 #define AML_DEFAULT_ARG_OP          (UINT16) 0xDDDD
 
 
-/* filename suffixes for output files */
-
-#define FILE_SUFFIX_PREPROC_USER    "i  "
-#define FILE_SUFFIX_PREPROCESSOR    "pre"
-#define FILE_SUFFIX_AML_CODE        "aml"
-#define FILE_SUFFIX_MAP             "map"
-#define FILE_SUFFIX_LISTING         "lst"
-#define FILE_SUFFIX_HEX_DUMP        "hex"
-#define FILE_SUFFIX_DEBUG           "txt"
-#define FILE_SUFFIX_SOURCE          "src"
-#define FILE_SUFFIX_NAMESPACE       "nsp"
-#define FILE_SUFFIX_ASM_SOURCE      "asm"
-#define FILE_SUFFIX_C_SOURCE        "c"
-#define FILE_SUFFIX_DISASSEMBLY     "dsl"
-#define FILE_SUFFIX_ASM_INCLUDE     "inc"
-#define FILE_SUFFIX_C_INCLUDE       "h"
-#define FILE_SUFFIX_ASL_CODE        "asl"
-#define FILE_SUFFIX_C_OFFSET        "offset.h"
-
-
 /* Types for input files */
 
-#define ASL_INPUT_TYPE_BINARY       0
-#define ASL_INPUT_TYPE_ACPI_TABLE   1
-#define ASL_INPUT_TYPE_ASCII_ASL    2
-#define ASL_INPUT_TYPE_ASCII_DATA   3
+#define ASL_INPUT_TYPE_BINARY               0
+#define ASL_INPUT_TYPE_BINARY_ACPI_TABLE    1
+#define ASL_INPUT_TYPE_ASCII_ASL            2
+#define ASL_INPUT_TYPE_ASCII_DATA           3
 
 
 /* Misc */
 
-#define ASL_EXTERNAL_METHOD         255
-#define ASL_ABORT                   TRUE
-#define ASL_NO_ABORT                FALSE
-#define ASL_EOF                     ACPI_UINT32_MAX
-#define ASL_WITHIN_COMMENT          (ACPI_UINT32_MAX -1)
-#define ASL_BLANK_LINE              (ACPI_UINT32_MAX -1)
+#define ASL_EXTERNAL_METHOD_UNKNOWN_PARAMS  255
+#define ASL_ABORT                           TRUE
+#define ASL_NO_ABORT                        FALSE
+#define ASL_EOF                             ACPI_UINT32_MAX
+#define ASL_IGNORE_LINE                     (ACPI_UINT32_MAX -1)
+#define ASL_ERROR_CODE_LENGTH               4
 
 
 /* Listings */
@@ -175,5 +155,56 @@
 
 #define RsCreateQwordField(Op, Name, ByteOffset) \
     RsCreateResourceField (Op, Name, ByteOffset, 0, 64);
+
+
+/*
+ * Macros for debug output
+ */
+#define DEBUG_MAX_LINE_LENGTH       61
+#define DEBUG_SPACES_PER_INDENT     3
+#define DEBUG_FULL_LINE_LENGTH      71
+
+#define ASL_PARSE_TREE_FULL_LINE    "\n%71.71s"
+
+/* Header/Trailer for original parse tree directly from the parser */
+
+#define ASL_PARSE_TREE_HEADER1 \
+    "%*s Value P_Op Flags     Line#  End# LogL# EndL#\n", 65, " "
+
+#define ASL_PARSE_TREE_DEBUG1 \
+    " %4.4X %8.8X %5d %5d %5d %5d"
+
+/* Header/Trailer for processed parse tree used for AML generation */
+
+#define ASL_PARSE_TREE_HEADER2 \
+    "%*s NameString Value    P_Op A_Op OpLen PByts Len  SubLen PSubLen OpPtr"\
+    "    Parent   Child    Next     Flags    AcTyp    Final Col"\
+    " Line#  End# LogL# EndL#\n", 60, " "
+
+#define ASL_PARSE_TREE_DEBUG2 \
+    " %08X %04X %04X %01X     %04X  %04X %05X  %05X   "\
+    "%8p %8p %8p %8p %08X %08X %04X  %02d  %5d %5d %5d %5d"
+
+/*
+ * Macros for ASL/ASL+ converter
+ */
+#define COMMENT_CAPTURE_ON    AslGbl_CommentState.CaptureComments = TRUE;
+#define COMMENT_CAPTURE_OFF   AslGbl_CommentState.CaptureComments = FALSE;
+
+/*
+ * Special name segments - these must only be declared at the root scope
+ */
+#define NAMESEG__PTS    "_PTS"
+#define NAMESEG__WAK    "_WAK"
+#define NAMESEG__S0     "_S0_"
+#define NAMESEG__S1     "_S1_"
+#define NAMESEG__S2     "_S2_"
+#define NAMESEG__S3     "_S3_"
+#define NAMESEG__S4     "_S4_"
+#define NAMESEG__S5     "_S5_"
+#define NAMESEG__TTS    "_TTS"
+
+#define MAX_SPECIAL_NAMES      9
+
 
 #endif /* ASLDEFINE.H */

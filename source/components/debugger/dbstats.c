@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -46,10 +46,10 @@
 #include "acdebug.h"
 #include "acnamesp.h"
 
-#ifdef ACPI_DEBUGGER
 
 #define _COMPONENT          ACPI_CA_DEBUGGER
         ACPI_MODULE_NAME    ("dbstats")
+
 
 /* Local prototypes */
 
@@ -127,7 +127,8 @@ AcpiDbListInfo (
     if (List->MaxDepth > 0)
     {
         AcpiOsPrintf (
-            "    Cache: [Depth    MaxD Avail  Size]                %8.2X %8.2X %8.2X %8.2X\n",
+            "    Cache: [Depth    MaxD Avail  Size]                "
+            "%8.2X %8.2X %8.2X %8.2X\n",
             List->CurrentDepth,
             List->MaxDepth,
             List->MaxDepth - List->CurrentDepth,
@@ -138,7 +139,8 @@ AcpiDbListInfo (
     if (List->MaxDepth > 0)
     {
         AcpiOsPrintf (
-            "    Cache: [Requests Hits Misses ObjSize]             %8.2X %8.2X %8.2X %8.2X\n",
+            "    Cache: [Requests Hits Misses ObjSize]             "
+            "%8.2X %8.2X %8.2X %8.2X\n",
             List->Requests,
             List->Hits,
             List->Requests - List->Hits,
@@ -150,7 +152,8 @@ AcpiDbListInfo (
     if (List->ObjectSize)
     {
         AcpiOsPrintf (
-            "    Mem:   [Alloc    Free Max    CurSize Outstanding] %8.2X %8.2X %8.2X %8.2X %8.2X\n",
+            "    Mem:   [Alloc    Free Max    CurSize Outstanding] "
+            "%8.2X %8.2X %8.2X %8.2X %8.2X\n",
             List->TotalAllocated,
             List->TotalFreed,
             List->MaxOccupied,
@@ -160,7 +163,8 @@ AcpiDbListInfo (
     else
     {
         AcpiOsPrintf (
-            "    Mem:   [Alloc Free Max CurSize Outstanding Total] %8.2X %8.2X %8.2X %8.2X %8.2X %8.2X\n",
+            "    Mem:   [Alloc Free Max CurSize Outstanding Total] "
+            "%8.2X %8.2X %8.2X %8.2X %8.2X %8.2X\n",
             List->TotalAllocated,
             List->TotalFreed,
             List->MaxOccupied,
@@ -335,7 +339,7 @@ AcpiDbClassifyOneObject (
     Op = AcpiPsGetDepthNext (Root, Op);
 
     SizeOfParseTree   = (NumGrammarElements - NumMethodElements) *
-                            (UINT32) sizeof (ACPI_PARSE_OBJECT);
+        (UINT32) sizeof (ACPI_PARSE_OBJECT);
     SizeOfMethodTrees = NumMethodElements * (UINT32) sizeof (ACPI_PARSE_OBJECT);
     SizeOfNodeEntries = NumNodes * (UINT32) sizeof (ACPI_NAMESPACE_NODE);
     SizeOfAcpiObjects = NumNodes * (UINT32) sizeof (ACPI_OPERAND_OBJECT);
@@ -374,7 +378,7 @@ AcpiDbCountNamespaceObjects (
     }
 
     (void) AcpiNsWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
-                ACPI_UINT32_MAX, FALSE, AcpiDbClassifyOneObject, NULL, NULL, NULL);
+        ACPI_UINT32_MAX, FALSE, AcpiDbClassifyOneObject, NULL, NULL, NULL);
 }
 
 
@@ -432,13 +436,14 @@ AcpiDbDisplayStatistics (
 
         for (i = 0; i < ACPI_TYPE_NS_NODE_MAX; i++)
         {
-            AcpiOsPrintf ("%16.16s % 10ld% 10ld\n", AcpiUtGetTypeName (i),
+            AcpiOsPrintf ("%16.16s %10u %10u\n", AcpiUtGetTypeName (i),
                 AcpiGbl_NodeTypeCount [i], AcpiGbl_ObjTypeCount [i]);
         }
-        AcpiOsPrintf ("%16.16s % 10ld% 10ld\n", "Misc/Unknown",
+
+        AcpiOsPrintf ("%16.16s %10u %10u\n", "Misc/Unknown",
             AcpiGbl_NodeTypeCountMisc, AcpiGbl_ObjTypeCountMisc);
 
-        AcpiOsPrintf ("%16.16s % 10ld% 10ld\n", "TOTALS:",
+        AcpiOsPrintf ("%16.16s %10u %10u\n", "TOTALS:",
             AcpiGbl_NumNodes, AcpiGbl_NumObjects);
         break;
 
@@ -464,17 +469,15 @@ AcpiDbDisplayStatistics (
     case CMD_STAT_MISC:
 
         AcpiOsPrintf ("\nMiscellaneous Statistics:\n\n");
-        AcpiOsPrintf ("Calls to AcpiPsFind:..  ........% 7ld\n",
+        AcpiOsPrintf ("%-28s:       %7u\n", "Calls to AcpiPsFind",
             AcpiGbl_PsFindCount);
-        AcpiOsPrintf ("Calls to AcpiNsLookup:..........% 7ld\n",
+        AcpiOsPrintf ("%-28s:       %7u\n", "Calls to AcpiNsLookup",
             AcpiGbl_NsLookupCount);
 
-        AcpiOsPrintf ("\n");
-
-        AcpiOsPrintf ("Mutex usage:\n\n");
+        AcpiOsPrintf ("\nMutex usage:\n\n");
         for (i = 0; i < ACPI_NUM_MUTEX; i++)
         {
-            AcpiOsPrintf ("%-28s:       % 7ld\n",
+            AcpiOsPrintf ("%-28s:       %7u\n",
                 AcpiUtGetMutexName (i), AcpiGbl_MutexInfo[i].UseCount);
         }
         break;
@@ -483,56 +486,57 @@ AcpiDbDisplayStatistics (
 
         AcpiOsPrintf ("\nInternal object sizes:\n\n");
 
-        AcpiOsPrintf ("Common           %3d\n", sizeof (ACPI_OBJECT_COMMON));
-        AcpiOsPrintf ("Number           %3d\n", sizeof (ACPI_OBJECT_INTEGER));
-        AcpiOsPrintf ("String           %3d\n", sizeof (ACPI_OBJECT_STRING));
-        AcpiOsPrintf ("Buffer           %3d\n", sizeof (ACPI_OBJECT_BUFFER));
-        AcpiOsPrintf ("Package          %3d\n", sizeof (ACPI_OBJECT_PACKAGE));
-        AcpiOsPrintf ("BufferField      %3d\n", sizeof (ACPI_OBJECT_BUFFER_FIELD));
-        AcpiOsPrintf ("Device           %3d\n", sizeof (ACPI_OBJECT_DEVICE));
-        AcpiOsPrintf ("Event            %3d\n", sizeof (ACPI_OBJECT_EVENT));
-        AcpiOsPrintf ("Method           %3d\n", sizeof (ACPI_OBJECT_METHOD));
-        AcpiOsPrintf ("Mutex            %3d\n", sizeof (ACPI_OBJECT_MUTEX));
-        AcpiOsPrintf ("Region           %3d\n", sizeof (ACPI_OBJECT_REGION));
-        AcpiOsPrintf ("PowerResource    %3d\n", sizeof (ACPI_OBJECT_POWER_RESOURCE));
-        AcpiOsPrintf ("Processor        %3d\n", sizeof (ACPI_OBJECT_PROCESSOR));
-        AcpiOsPrintf ("ThermalZone      %3d\n", sizeof (ACPI_OBJECT_THERMAL_ZONE));
-        AcpiOsPrintf ("RegionField      %3d\n", sizeof (ACPI_OBJECT_REGION_FIELD));
-        AcpiOsPrintf ("BankField        %3d\n", sizeof (ACPI_OBJECT_BANK_FIELD));
-        AcpiOsPrintf ("IndexField       %3d\n", sizeof (ACPI_OBJECT_INDEX_FIELD));
-        AcpiOsPrintf ("Reference        %3d\n", sizeof (ACPI_OBJECT_REFERENCE));
-        AcpiOsPrintf ("Notify           %3d\n", sizeof (ACPI_OBJECT_NOTIFY_HANDLER));
-        AcpiOsPrintf ("AddressSpace     %3d\n", sizeof (ACPI_OBJECT_ADDR_HANDLER));
-        AcpiOsPrintf ("Extra            %3d\n", sizeof (ACPI_OBJECT_EXTRA));
-        AcpiOsPrintf ("Data             %3d\n", sizeof (ACPI_OBJECT_DATA));
+        AcpiOsPrintf ("Common           %3d\n", (UINT32) sizeof (ACPI_OBJECT_COMMON));
+        AcpiOsPrintf ("Number           %3d\n", (UINT32) sizeof (ACPI_OBJECT_INTEGER));
+        AcpiOsPrintf ("String           %3d\n", (UINT32) sizeof (ACPI_OBJECT_STRING));
+        AcpiOsPrintf ("Buffer           %3d\n", (UINT32) sizeof (ACPI_OBJECT_BUFFER));
+        AcpiOsPrintf ("Package          %3d\n", (UINT32) sizeof (ACPI_OBJECT_PACKAGE));
+        AcpiOsPrintf ("BufferField      %3d\n", (UINT32) sizeof (ACPI_OBJECT_BUFFER_FIELD));
+        AcpiOsPrintf ("Device           %3d\n", (UINT32) sizeof (ACPI_OBJECT_DEVICE));
+        AcpiOsPrintf ("Event            %3d\n", (UINT32) sizeof (ACPI_OBJECT_EVENT));
+        AcpiOsPrintf ("Method           %3d\n", (UINT32) sizeof (ACPI_OBJECT_METHOD));
+        AcpiOsPrintf ("Mutex            %3d\n", (UINT32) sizeof (ACPI_OBJECT_MUTEX));
+        AcpiOsPrintf ("Region           %3d\n", (UINT32) sizeof (ACPI_OBJECT_REGION));
+        AcpiOsPrintf ("PowerResource    %3d\n", (UINT32) sizeof (ACPI_OBJECT_POWER_RESOURCE));
+        AcpiOsPrintf ("Processor        %3d\n", (UINT32) sizeof (ACPI_OBJECT_PROCESSOR));
+        AcpiOsPrintf ("ThermalZone      %3d\n", (UINT32) sizeof (ACPI_OBJECT_THERMAL_ZONE));
+        AcpiOsPrintf ("RegionField      %3d\n", (UINT32) sizeof (ACPI_OBJECT_REGION_FIELD));
+        AcpiOsPrintf ("BankField        %3d\n", (UINT32) sizeof (ACPI_OBJECT_BANK_FIELD));
+        AcpiOsPrintf ("IndexField       %3d\n", (UINT32) sizeof (ACPI_OBJECT_INDEX_FIELD));
+        AcpiOsPrintf ("Reference        %3d\n", (UINT32) sizeof (ACPI_OBJECT_REFERENCE));
+        AcpiOsPrintf ("Notify           %3d\n", (UINT32) sizeof (ACPI_OBJECT_NOTIFY_HANDLER));
+        AcpiOsPrintf ("AddressSpace     %3d\n", (UINT32) sizeof (ACPI_OBJECT_ADDR_HANDLER));
+        AcpiOsPrintf ("Extra            %3d\n", (UINT32) sizeof (ACPI_OBJECT_EXTRA));
+        AcpiOsPrintf ("Data             %3d\n", (UINT32) sizeof (ACPI_OBJECT_DATA));
 
         AcpiOsPrintf ("\n");
 
-        AcpiOsPrintf ("ParseObject      %3d\n", sizeof (ACPI_PARSE_OBJ_COMMON));
-        AcpiOsPrintf ("ParseObjectNamed %3d\n", sizeof (ACPI_PARSE_OBJ_NAMED));
-        AcpiOsPrintf ("ParseObjectAsl   %3d\n", sizeof (ACPI_PARSE_OBJ_ASL));
-        AcpiOsPrintf ("OperandObject    %3d\n", sizeof (ACPI_OPERAND_OBJECT));
-        AcpiOsPrintf ("NamespaceNode    %3d\n", sizeof (ACPI_NAMESPACE_NODE));
-        AcpiOsPrintf ("AcpiObject       %3d\n", sizeof (ACPI_OBJECT));
+        AcpiOsPrintf ("ParseObject      %3d\n", (UINT32) sizeof (ACPI_PARSE_OBJ_COMMON));
+        AcpiOsPrintf ("ParseObjectNamed %3d\n", (UINT32) sizeof (ACPI_PARSE_OBJ_NAMED));
+        AcpiOsPrintf ("ParseObjectAsl   %3d\n", (UINT32) sizeof (ACPI_PARSE_OBJ_ASL));
+        AcpiOsPrintf ("OperandObject    %3d\n", (UINT32) sizeof (ACPI_OPERAND_OBJECT));
+        AcpiOsPrintf ("NamespaceNode    %3d\n", (UINT32) sizeof (ACPI_NAMESPACE_NODE));
+        AcpiOsPrintf ("AcpiObject       %3d\n", (UINT32) sizeof (ACPI_OBJECT));
 
         AcpiOsPrintf ("\n");
 
-        AcpiOsPrintf ("Generic State    %3d\n", sizeof (ACPI_GENERIC_STATE));
-        AcpiOsPrintf ("Common State     %3d\n", sizeof (ACPI_COMMON_STATE));
-        AcpiOsPrintf ("Control State    %3d\n", sizeof (ACPI_CONTROL_STATE));
-        AcpiOsPrintf ("Update State     %3d\n", sizeof (ACPI_UPDATE_STATE));
-        AcpiOsPrintf ("Scope State      %3d\n", sizeof (ACPI_SCOPE_STATE));
-        AcpiOsPrintf ("Parse Scope      %3d\n", sizeof (ACPI_PSCOPE_STATE));
-        AcpiOsPrintf ("Package State    %3d\n", sizeof (ACPI_PKG_STATE));
-        AcpiOsPrintf ("Thread State     %3d\n", sizeof (ACPI_THREAD_STATE));
-        AcpiOsPrintf ("Result Values    %3d\n", sizeof (ACPI_RESULT_VALUES));
-        AcpiOsPrintf ("Notify Info      %3d\n", sizeof (ACPI_NOTIFY_INFO));
+        AcpiOsPrintf ("Generic State    %3d\n", (UINT32) sizeof (ACPI_GENERIC_STATE));
+        AcpiOsPrintf ("Common State     %3d\n", (UINT32) sizeof (ACPI_COMMON_STATE));
+        AcpiOsPrintf ("Control State    %3d\n", (UINT32) sizeof (ACPI_CONTROL_STATE));
+        AcpiOsPrintf ("Update State     %3d\n", (UINT32) sizeof (ACPI_UPDATE_STATE));
+        AcpiOsPrintf ("Scope State      %3d\n", (UINT32) sizeof (ACPI_SCOPE_STATE));
+        AcpiOsPrintf ("Parse Scope      %3d\n", (UINT32) sizeof (ACPI_PSCOPE_STATE));
+        AcpiOsPrintf ("Package State    %3d\n", (UINT32) sizeof (ACPI_PKG_STATE));
+        AcpiOsPrintf ("Thread State     %3d\n", (UINT32) sizeof (ACPI_THREAD_STATE));
+        AcpiOsPrintf ("Result Values    %3d\n", (UINT32) sizeof (ACPI_RESULT_VALUES));
+        AcpiOsPrintf ("Notify Info      %3d\n", (UINT32) sizeof (ACPI_NOTIFY_INFO));
         break;
 
     case CMD_STAT_STACK:
 #if defined(ACPI_DEBUG_OUTPUT)
 
-        Temp = (UINT32) ACPI_PTR_DIFF (AcpiGbl_EntryStackPointer, AcpiGbl_LowestStackPointer);
+        Temp = (UINT32) ACPI_PTR_DIFF (
+            AcpiGbl_EntryStackPointer, AcpiGbl_LowestStackPointer);
 
         AcpiOsPrintf ("\nSubsystem Stack Usage:\n\n");
         AcpiOsPrintf ("Entry Stack Pointer          %p\n", AcpiGbl_EntryStackPointer);
@@ -550,5 +554,3 @@ AcpiDbDisplayStatistics (
     AcpiOsPrintf ("\n");
     return (AE_OK);
 }
-
-#endif /* ACPI_DEBUGGER  */

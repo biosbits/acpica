@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -47,8 +47,6 @@
 #include "acnamesp.h"
 #include "acdisasm.h"
 
-
-#ifdef ACPI_DISASSEMBLER
 
 #define _COMPONENT          ACPI_CA_DEBUGGER
         ACPI_MODULE_NAME    ("dmnames")
@@ -93,8 +91,8 @@ AcpiDmDumpName (
 
     /* Remove all trailing underscores from the name */
 
-    Length = ACPI_NAME_SIZE;
-    for (i = (ACPI_NAME_SIZE - 1); i != 0; i--)
+    Length = ACPI_NAMESEG_SIZE;
+    for (i = (ACPI_NAMESEG_SIZE - 1); i != 0; i--)
     {
         if (NewName[i] == '_')
         {
@@ -126,7 +124,7 @@ AcpiDmDumpName (
  *
  * RETURN:      Status
  *
- * DESCRIPTION: Diplay the pathname associated with a named object. Two
+ * DESCRIPTION: Display the pathname associated with a named object. Two
  *              versions. One searches the parse tree (for parser-only
  *              applications suchas AcpiDump), and the other searches the
  *              ACPI namespace (the parse tree is probably deleted)
@@ -157,15 +155,15 @@ AcpiPsDisplayObjectPathname (
         /* Node not defined in this scope, look it up */
 
         Status = AcpiNsLookup (WalkState->ScopeInfo, Op->Common.Value.String,
-                    ACPI_TYPE_ANY, ACPI_IMODE_EXECUTE, ACPI_NS_SEARCH_PARENT,
-                    WalkState, &(Node));
+            ACPI_TYPE_ANY, ACPI_IMODE_EXECUTE, ACPI_NS_SEARCH_PARENT,
+            WalkState, &(Node));
 
         if (ACPI_FAILURE (Status))
         {
             /*
-             * We can't get the pathname since the object
-             * is not in the namespace. This can happen during single
-             * stepping where a dynamic named object is *about* to be created.
+             * We can't get the pathname since the object is not in the
+             * namespace. This can happen during single stepping
+             * where a dynamic named object is *about* to be created.
              */
             AcpiOsPrintf ("  [Path not found]");
             goto Exit;
@@ -246,7 +244,7 @@ AcpiDmNamestring (
         Name++;
         break;
 
-    case AML_MULTI_NAME_PREFIX_OP:
+    case AML_MULTI_NAME_PREFIX:
 
         SegCount = (UINT32) ACPI_GET8 (Name + 1);
         Name += 2;
@@ -271,7 +269,8 @@ AcpiDmNamestring (
 
             AcpiOsPrintf (".");
         }
-        Name += ACPI_NAME_SIZE;
+
+        Name += ACPI_NAMESEG_SIZE;
     }
 }
 
@@ -334,7 +333,6 @@ AcpiDmDisplayPath (
     }
 
     Prev = NULL;            /* Start with Root Node */
-
     while (Prev != Op)
     {
         /* Search upwards in the tree to find scope with "prev" as its parent */
@@ -392,6 +390,7 @@ AcpiDmDisplayPath (
                 DoDot = TRUE;
             }
         }
+
         Prev = Search;
     }
 }
@@ -414,6 +413,8 @@ AcpiDmValidateName (
     char                    *Name,
     ACPI_PARSE_OBJECT       *Op)
 {
+    ACPI_PARSE_OBJECT       *TargetOp;
+
 
     if ((!Name) ||
         (!Op->Common.Parent))
@@ -426,9 +427,6 @@ AcpiDmValidateName (
         AcpiOsPrintf (
             " /**** Name not found or not accessible from this scope ****/ ");
     }
-
-    ACPI_PARSE_OBJECT       *TargetOp;
-
 
     if ((!Name) ||
         (!Op->Common.Parent))
@@ -449,6 +447,4 @@ AcpiDmValidateName (
             " /**** Name not found or not accessible from this scope ****/ ");
     }
 }
-#endif
-
 #endif

@@ -6,7 +6,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,7 +31,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -61,7 +61,8 @@
  *
  * RETURN:      Status
  *
- * DESCRIPTION: This routine returns the type associatd with a particular handle
+ * DESCRIPTION: This routine returns the type associated with a particular
+ *              handle
  *
  ******************************************************************************/
 
@@ -81,10 +82,8 @@ AcpiGetType (
         return (AE_BAD_PARAMETER);
     }
 
-    /*
-     * Special case for the predefined Root Node
-     * (return type ANY)
-     */
+    /* Special case for the predefined Root Node (return type ANY) */
+
     if (Handle == ACPI_ROOT_OBJECT)
     {
         *RetType = ACPI_TYPE_ANY;
@@ -107,7 +106,6 @@ AcpiGetType (
     }
 
     *RetType = Node->Type;
-
 
     Status = AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
     return (Status);

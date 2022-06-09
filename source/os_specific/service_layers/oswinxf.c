@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -65,7 +65,7 @@
 
 
 UINT64                      TimerFrequency;
-char                        TableName[ACPI_NAME_SIZE + 1];
+char                        TableName[ACPI_NAMESEG_SIZE + 1];
 
 #define ACPI_OS_DEBUG_TIMEOUT   30000 /* 30 seconds */
 
@@ -99,8 +99,6 @@ typedef struct acpi_os_semaphore_info
 ACPI_OS_SEMAPHORE_INFO          AcpiGbl_Semaphores[ACPI_OS_MAX_SEMAPHORES];
 
 #endif /* ACPI_SINGLE_THREADED */
-
-BOOLEAN                         AcpiGbl_DebugTimeout = FALSE;
 
 /******************************************************************************
  *
@@ -291,6 +289,33 @@ AcpiOsPhysicalTableOverride (
 
 /******************************************************************************
  *
+ * FUNCTION:    AcpiOsEnterSleep
+ *
+ * PARAMETERS:  SleepState          - Which sleep state to enter
+ *              RegaValue           - Register A value
+ *              RegbValue           - Register B value
+ *
+ * RETURN:      Status
+ *
+ * DESCRIPTION: A hook before writing sleep registers to enter the sleep
+ *              state. Return AE_CTRL_SKIP to skip further sleep register
+ *              writes.
+ *
+ *****************************************************************************/
+
+ACPI_STATUS
+AcpiOsEnterSleep (
+    UINT8                   SleepState,
+    UINT32                  RegaValue,
+    UINT32                  RegbValue)
+{
+
+    return (AE_OK);
+}
+
+
+/******************************************************************************
+ *
  * FUNCTION:    AcpiOsGetTimer
  *
  * PARAMETERS:  None
@@ -325,7 +350,7 @@ AcpiOsGetTimer (
     {
         /* Convert milliseconds to 100 nanosecond ticks */
 
-        return ((UINT64) GetTickCount() * ACPI_100NSEC_PER_MSEC);
+        return (GetTickCount64() * ACPI_100NSEC_PER_MSEC);
     }
 }
 
@@ -554,6 +579,7 @@ AcpiOsGetLine (
     {
         *BytesRead = i;
     }
+
     return (AE_OK);
 }
 
@@ -777,7 +803,8 @@ AcpiOsCreateSemaphore (
     if (i >= ACPI_OS_MAX_SEMAPHORES)
     {
         ACPI_EXCEPTION ((AE_INFO, AE_LIMIT,
-            "Reached max semaphores (%u), could not create", ACPI_OS_MAX_SEMAPHORES));
+            "Reached max semaphores (%u), could not create",
+            ACPI_OS_MAX_SEMAPHORES));
         return (AE_LIMIT);
     }
 
@@ -794,8 +821,9 @@ AcpiOsCreateSemaphore (
     AcpiGbl_Semaphores[i].CurrentUnits = (UINT16) InitialUnits;
     AcpiGbl_Semaphores[i].OsHandle = Mutex;
 
-    ACPI_DEBUG_PRINT ((ACPI_DB_MUTEX, "Handle=%u, Max=%u, Current=%u, OsHandle=%p\n",
-            i, MaxUnits, InitialUnits, Mutex));
+    ACPI_DEBUG_PRINT ((ACPI_DB_MUTEX,
+        "Handle=%u, Max=%u, Current=%u, OsHandle=%p\n",
+        i, MaxUnits, InitialUnits, Mutex));
 
     *OutHandle = (void *) i;
     return (AE_OK);
@@ -890,7 +918,8 @@ AcpiOsWaitSemaphore (
         OsTimeout += 10;
     }
 
-    WaitStatus = WaitForSingleObject (AcpiGbl_Semaphores[Index].OsHandle, OsTimeout);
+    WaitStatus = WaitForSingleObject (
+        AcpiGbl_Semaphores[Index].OsHandle, OsTimeout);
     if (WaitStatus == WAIT_TIMEOUT)
     {
         if (AcpiGbl_DebugTimeout)
@@ -899,12 +928,14 @@ AcpiOsWaitSemaphore (
                 "Debug timeout on semaphore 0x%04X (%ums)\n",
                 Index, ACPI_OS_DEBUG_TIMEOUT));
         }
+
         return (AE_TIME);
     }
 
     if (AcpiGbl_Semaphores[Index].CurrentUnits == 0)
     {
-        ACPI_ERROR ((AE_INFO, "%s - No unit received. Timeout 0x%X, OS_Status 0x%X",
+        ACPI_ERROR ((AE_INFO,
+            "%s - No unit received. Timeout 0x%X, OS_Status 0x%X",
             AcpiUtGetMutexName (Index), Timeout, WaitStatus));
 
         return (AE_OK);
@@ -1533,7 +1564,6 @@ AcpiOsExecute (
 {
 
     Function (Context);
-
     return (AE_OK);
 }
 
@@ -1557,5 +1587,6 @@ void
 AcpiOsWaitEventsComplete (
     void)
 {
+
     return;
 }

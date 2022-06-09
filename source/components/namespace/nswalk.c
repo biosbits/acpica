@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -214,14 +214,18 @@ AcpiNsWalkNamespace (
     if (StartNode == ACPI_ROOT_OBJECT)
     {
         StartNode = AcpiGbl_RootNode;
+        if (!StartNode)
+        {
+            return_ACPI_STATUS (AE_NO_NAMESPACE);
+        }
     }
 
     /* Null child means "get first node" */
 
-    ParentNode  = StartNode;
-    ChildNode   = AcpiNsGetNextNode (ParentNode, NULL);
-    ChildType   = ACPI_TYPE_ANY;
-    Level       = 1;
+    ParentNode = StartNode;
+    ChildNode = AcpiNsGetNextNode (ParentNode, NULL);
+    ChildType = ACPI_TYPE_ANY;
+    Level = 1;
 
     /*
      * Traverse the tree of nodes until we bubble back up to where we
@@ -279,7 +283,7 @@ AcpiNsWalkNamespace (
                 if (DescendingCallback)
                 {
                     Status = DescendingCallback (ChildNode, Level,
-                                Context, ReturnValue);
+                        Context, ReturnValue);
                 }
             }
             else
@@ -287,7 +291,7 @@ AcpiNsWalkNamespace (
                 if (AscendingCallback)
                 {
                     Status = AscendingCallback (ChildNode, Level,
-                                Context, ReturnValue);
+                        Context, ReturnValue);
                 }
             }
 

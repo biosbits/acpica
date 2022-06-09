@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -203,10 +203,11 @@ AcpiExOpcode_2A_2T_1R (
 
         /* Quotient to ReturnDesc1, remainder to ReturnDesc2 */
 
-        Status = AcpiUtDivide (Operand[0]->Integer.Value,
-                               Operand[1]->Integer.Value,
-                               &ReturnDesc1->Integer.Value,
-                               &ReturnDesc2->Integer.Value);
+        Status = AcpiUtDivide (
+            Operand[0]->Integer.Value,
+            Operand[1]->Integer.Value,
+            &ReturnDesc1->Integer.Value,
+            &ReturnDesc2->Integer.Value);
         if (ACPI_FAILURE (Status))
         {
             goto Cleanup;
@@ -217,6 +218,7 @@ AcpiExOpcode_2A_2T_1R (
 
         ACPI_ERROR ((AE_INFO, "Unknown AML opcode 0x%X",
             WalkState->Opcode));
+
         Status = AE_AML_BAD_OPCODE;
         goto Cleanup;
     }
@@ -301,9 +303,10 @@ AcpiExOpcode_2A_1T_1R (
             goto Cleanup;
         }
 
-        ReturnDesc->Integer.Value = AcpiExDoMathOp (WalkState->Opcode,
-                                                Operand[0]->Integer.Value,
-                                                Operand[1]->Integer.Value);
+        ReturnDesc->Integer.Value = AcpiExDoMathOp (
+            WalkState->Opcode,
+            Operand[0]->Integer.Value,
+            Operand[1]->Integer.Value);
         goto StoreResultToTarget;
     }
 
@@ -320,16 +323,17 @@ AcpiExOpcode_2A_1T_1R (
 
         /* ReturnDesc will contain the remainder */
 
-        Status = AcpiUtDivide (Operand[0]->Integer.Value,
-                               Operand[1]->Integer.Value,
-                               NULL,
-                               &ReturnDesc->Integer.Value);
+        Status = AcpiUtDivide (
+            Operand[0]->Integer.Value,
+            Operand[1]->Integer.Value,
+            NULL,
+            &ReturnDesc->Integer.Value);
         break;
 
-    case AML_CONCAT_OP: /* Concatenate (Data1, Data2, Result) */
+    case AML_CONCATENATE_OP: /* Concatenate (Data1, Data2, Result) */
 
-        Status = AcpiExDoConcatenate (Operand[0], Operand[1],
-                    &ReturnDesc, WalkState);
+        Status = AcpiExDoConcatenate (
+            Operand[0], Operand[1], &ReturnDesc, WalkState);
         break;
 
     case AML_TO_STRING_OP: /* ToString (Buffer, Length, Result) (ACPI 2.0) */
@@ -348,9 +352,9 @@ AcpiExOpcode_2A_1T_1R (
          * NOTE: A length of zero is ok, and will create a zero-length, null
          *       terminated string.
          */
-        while ((Length < Operand[0]->Buffer.Length) &&
-               (Length < Operand[1]->Integer.Value) &&
-               (Operand[0]->Buffer.Pointer[Length]))
+        while ((Length < Operand[0]->Buffer.Length) &&  /* Length of input buffer */
+               (Length < Operand[1]->Integer.Value) &&  /* Length operand */
+               (Operand[0]->Buffer.Pointer[Length]))    /* Null terminator */
         {
             Length++;
         }
@@ -372,12 +376,12 @@ AcpiExOpcode_2A_1T_1R (
             Operand[0]->Buffer.Pointer, Length);
         break;
 
-    case AML_CONCAT_RES_OP:
+    case AML_CONCATENATE_TEMPLATE_OP:
 
         /* ConcatenateResTemplate (Buffer, Buffer, Result) (ACPI 2.0) */
 
-        Status = AcpiExConcatTemplate (Operand[0], Operand[1],
-                    &ReturnDesc, WalkState);
+        Status = AcpiExConcatTemplate (
+            Operand[0], Operand[1], &ReturnDesc, WalkState);
         break;
 
     case AML_INDEX_OP:              /* Index (Source Index Result) */
@@ -444,6 +448,8 @@ AcpiExOpcode_2A_1T_1R (
 
         default:
 
+            ACPI_ERROR ((AE_INFO,
+                "Invalid object type: %X", (Operand[0])->Common.Type));
             Status = AE_AML_INTERNAL;
             goto Cleanup;
         }
@@ -452,7 +458,7 @@ AcpiExOpcode_2A_1T_1R (
 
         if (ACPI_FAILURE (Status))
         {
-            ACPI_EXCEPTION ((AE_INFO, Status,
+            ACPI_BIOS_EXCEPTION ((AE_INFO, Status,
                 "Index (0x%X%8.8X) is beyond end of object (length 0x%X)",
                 ACPI_FORMAT_UINT64 (Index), (UINT32) Length));
             goto Cleanup;
@@ -560,8 +566,8 @@ AcpiExOpcode_2A_0T_1R (
         /* LogicalOp  (Operand0, Operand1) */
 
         Status = AcpiExDoLogicalNumericOp (WalkState->Opcode,
-                        Operand[0]->Integer.Value, Operand[1]->Integer.Value,
-                        &LogicalResult);
+            Operand[0]->Integer.Value, Operand[1]->Integer.Value,
+            &LogicalResult);
         goto StoreLogicalResult;
     }
     else if (WalkState->OpInfo->Flags & AML_LOGICAL)
@@ -569,7 +575,7 @@ AcpiExOpcode_2A_0T_1R (
         /* LogicalOp  (Operand0, Operand1) */
 
         Status = AcpiExDoLogicalOp (WalkState->Opcode, Operand[0],
-                    Operand[1], &LogicalResult);
+            Operand[1], &LogicalResult);
         goto StoreLogicalResult;
     }
 
@@ -600,6 +606,7 @@ AcpiExOpcode_2A_0T_1R (
 
         ACPI_ERROR ((AE_INFO, "Unknown AML opcode 0x%X",
             WalkState->Opcode));
+
         Status = AE_AML_BAD_OPCODE;
         goto Cleanup;
     }

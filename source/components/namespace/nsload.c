@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -46,6 +46,7 @@
 #include "acnamesp.h"
 #include "acdispat.h"
 #include "actables.h"
+#include "acinterp.h"
 
 
 #define _COMPONENT          ACPI_NAMESPACE
@@ -64,7 +65,6 @@ AcpiNsDeleteSubtree (
 #endif
 
 
-#ifndef ACPI_NO_METHOD_EXECUTION
 /*******************************************************************************
  *
  * FUNCTION:    AcpiNsLoadTable
@@ -89,21 +89,6 @@ AcpiNsLoadTable (
     ACPI_FUNCTION_TRACE (NsLoadTable);
 
 
-    /*
-     * Parse the table and load the namespace with all named
-     * objects found within. Control methods are NOT parsed
-     * at this time. In fact, the control methods cannot be
-     * parsed until the entire namespace is loaded, because
-     * if a control method makes a forward reference (call)
-     * to another control method, we can't continue parsing
-     * because we don't know how many arguments to parse next!
-     */
-    Status = AcpiUtAcquireMutex (ACPI_MTX_NAMESPACE);
-    if (ACPI_FAILURE (Status))
-    {
-        return_ACPI_STATUS (Status);
-    }
-
     /* If table already loaded into namespace, just return */
 
     if (AcpiTbIsTableLoaded (TableIndex))
@@ -121,6 +106,15 @@ AcpiNsLoadTable (
         goto Unlock;
     }
 
+    /*
+     * Parse the table and load the namespace with all named
+     * objects found within. Control methods are NOT parsed
+     * at this time. In fact, the control methods cannot be
+     * parsed until the entire namespace is loaded, because
+     * if a control method makes a forward reference (call)
+     * to another control method, we can't continue parsing
+     * because we don't know how many arguments to parse next!
+     */
     Status = AcpiNsParseTable (TableIndex, Node);
     if (ACPI_SUCCESS (Status))
     {
@@ -128,12 +122,23 @@ AcpiNsLoadTable (
     }
     else
     {
-        (void) AcpiTbReleaseOwnerId (TableIndex);
+        /*
+         * On error, delete any namespace objects created by this table.
+         * We cannot initialize these objects, so delete them. There are
+         * a couple of especially bad cases:
+         * AE_ALREADY_EXISTS - namespace collision.
+         * AE_NOT_FOUND - the target of a Scope operator does not
+         * exist. This target of Scope must already exist in the
+         * namespace, as per the ACPI specification.
+         */
+        AcpiNsDeleteNamespaceByOwner (
+            AcpiGbl_RootTableList.Tables[TableIndex].OwnerId);
+
+        AcpiTbReleaseOwnerId (TableIndex);
+        return_ACPI_STATUS (Status);
     }
 
 Unlock:
-    (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
-
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
@@ -148,7 +153,9 @@ Unlock:
     ACPI_DEBUG_PRINT ((ACPI_DB_INFO,
         "**** Begin Table Object Initialization\n"));
 
+    AcpiExEnterInterpreter ();
     Status = AcpiDsInitializeObjects (TableIndex, Node);
+    AcpiExExitInterpreter ();
 
     ACPI_DEBUG_PRINT ((ACPI_DB_INFO,
         "**** Completed Table Object Initialization\n"));
@@ -245,8 +252,8 @@ AcpiNsDeleteSubtree (
 
 
     ParentHandle = StartHandle;
-    ChildHandle  = NULL;
-    Level        = 1;
+    ChildHandle = NULL;
+    Level = 1;
 
     /*
      * Traverse the tree of objects until we bubble back up
@@ -257,7 +264,7 @@ AcpiNsDeleteSubtree (
         /* Attempt to get the next object in this scope */
 
         Status = AcpiGetNextObject (ACPI_TYPE_ANY, ParentHandle,
-                                    ChildHandle, &NextChildHandle);
+            ChildHandle, &NextChildHandle);
 
         ChildHandle = NextChildHandle;
 
@@ -268,7 +275,7 @@ AcpiNsDeleteSubtree (
             /* Check if this object has any children */
 
             if (ACPI_SUCCESS (AcpiGetNextObject (ACPI_TYPE_ANY, ChildHandle,
-                                    NULL, &Dummy)))
+                NULL, &Dummy)))
             {
                 /*
                  * There is at least one child of this object,
@@ -346,8 +353,6 @@ AcpiNsUnloadNamespace (
     /* This function does the real work */
 
     Status = AcpiNsDeleteSubtree (Handle);
-
     return_ACPI_STATUS (Status);
 }
-#endif
 #endif

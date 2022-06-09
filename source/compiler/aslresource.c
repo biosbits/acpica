@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -89,7 +89,7 @@ RsSmallAddressCheck (
     ACPI_PARSE_OBJECT       *Op)
 {
 
-    if (Gbl_NoResourceChecking)
+    if (AslGbl_NoResourceChecking)
     {
         return;
     }
@@ -221,7 +221,7 @@ RsLargeAddressCheck (
     ACPI_PARSE_OBJECT       *Op)
 {
 
-    if (Gbl_NoResourceChecking)
+    if (AslGbl_NoResourceChecking)
     {
         return;
     }
@@ -396,6 +396,7 @@ RsGetStringDataLength (
         {
             return ((UINT16) (strlen (InitializerOp->Asl.Value.String) + 1));
         }
+
         InitializerOp = ASL_GET_PEER_NODE (InitializerOp);
     }
 
@@ -431,7 +432,6 @@ RsAllocateResourceNode (
 
     Rnode->Buffer = UtLocalCalloc (Size);
     Rnode->BufferLength = Size;
-
     return (Rnode);
 }
 
@@ -465,8 +465,7 @@ RsCreateResourceField (
 {
 
     Op->Asl.ExternalName = Name;
-    Op->Asl.CompileFlags |= NODE_IS_RESOURCE_FIELD;
-
+    Op->Asl.CompileFlags |= OP_IS_RESOURCE_FIELD;
 
     Op->Asl.Value.Tag.BitOffset = (ByteOffset * 8) + BitOffset;
     Op->Asl.Value.Tag.BitLength = BitLength;
@@ -612,9 +611,9 @@ RsCheckListForDuplicates (
                 {
                     /* Emit error only once per duplicate node */
 
-                    if (!(NextOp->Asl.CompileFlags & NODE_IS_DUPLICATE))
+                    if (!(NextOp->Asl.CompileFlags & OP_IS_DUPLICATE))
                     {
-                        NextOp->Asl.CompileFlags |= NODE_IS_DUPLICATE;
+                        NextOp->Asl.CompileFlags |= OP_IS_DUPLICATE;
                         AslError (ASL_ERROR, ASL_MSG_DUPLICATE_ITEM,
                             NextOp, NULL);
                     }
@@ -866,18 +865,51 @@ RsDoOneResourceDescriptor (
         break;
 
     case PARSEOP_I2C_SERIALBUS:
+    case PARSEOP_I2C_SERIALBUS_V2:
 
         Rnode = RsDoI2cSerialBusDescriptor (Info);
         break;
 
     case PARSEOP_SPI_SERIALBUS:
+    case PARSEOP_SPI_SERIALBUS_V2:
 
         Rnode = RsDoSpiSerialBusDescriptor (Info);
         break;
 
     case PARSEOP_UART_SERIALBUS:
+    case PARSEOP_UART_SERIALBUS_V2:
 
         Rnode = RsDoUartSerialBusDescriptor (Info);
+        break;
+
+    case PARSEOP_CSI2_SERIALBUS:
+
+        Rnode = RsDoCsi2SerialBusDescriptor (Info);
+        break;
+
+    case PARSEOP_PINCONFIG:
+
+        Rnode = RsDoPinConfigDescriptor (Info);
+        break;
+
+    case PARSEOP_PINFUNCTION:
+
+        Rnode = RsDoPinFunctionDescriptor (Info);
+        break;
+
+    case PARSEOP_PINGROUP:
+
+        Rnode = RsDoPinGroupDescriptor (Info);
+        break;
+
+    case PARSEOP_PINGROUPFUNCTION:
+
+        Rnode = RsDoPinGroupFunctionDescriptor (Info);
+        break;
+
+    case PARSEOP_PINGROUPCONFIG:
+
+        Rnode = RsDoPinGroupConfigDescriptor (Info);
         break;
 
     case PARSEOP_DEFAULT_ARG:
@@ -888,7 +920,7 @@ RsDoOneResourceDescriptor (
     default:
 
         printf ("Unknown resource descriptor type [%s]\n",
-                    Info->DescriptorTypeOp->Asl.ParseOpName);
+            Info->DescriptorTypeOp->Asl.ParseOpName);
         break;
     }
 
@@ -898,13 +930,14 @@ RsDoOneResourceDescriptor (
      * references to the descriptor can be resolved.
      */
     Info->DescriptorTypeOp->Asl.ParseOpcode = PARSEOP_DEFAULT_ARG;
-    Info->DescriptorTypeOp->Asl.CompileFlags = NODE_IS_RESOURCE_DESC;
+    Info->DescriptorTypeOp->Asl.CompileFlags = OP_IS_RESOURCE_DESC;
     Info->DescriptorTypeOp->Asl.Value.Integer = Info->CurrentByteOffset;
 
     if (Rnode)
     {
         Info->DescriptorTypeOp->Asl.FinalAmlLength = Rnode->BufferLength;
-        Info->DescriptorTypeOp->Asl.Extra = ((AML_RESOURCE *) Rnode->Buffer)->DescriptorType;
+        Info->DescriptorTypeOp->Asl.Extra =
+            ((AML_RESOURCE *) Rnode->Buffer)->DescriptorType;
     }
 
     return (Rnode);
@@ -996,7 +1029,7 @@ RsDoResourceTemplate (
 
     if (Op->Asl.Parent)
     {
-        Op->Asl.Parent->Asl.CompileFlags |= NODE_IS_RESOURCE_DESC;
+        Op->Asl.Parent->Asl.CompileFlags |= OP_IS_RESOURCE_DESC;
     }
 
     /* ResourceTemplate Opcode is first (Op) */
@@ -1011,6 +1044,14 @@ RsDoResourceTemplate (
     /* First Descriptor type is next */
 
     DescriptorTypeOp = ASL_GET_PEER_NODE (BufferOp);
+
+    /* DEFAULT_ARG indicates null template - ResourceTemplate(){} */
+
+    if (DescriptorTypeOp->Asl.ParseOpcode == PARSEOP_DEFAULT_ARG)
+    {
+        AslError (ASL_WARNING, ASL_MSG_NULL_RESOURCE_TEMPLATE,
+            DescriptorTypeOp, DescriptorTypeOp->Asl.Value.String);
+    }
 
     /*
      * Process all resource descriptors in the list
@@ -1035,7 +1076,7 @@ RsDoResourceTemplate (
         Info.DescriptorTypeOp = DescriptorTypeOp;
         Info.CurrentByteOffset = CurrentByteOffset;
 
-        DescriptorTypeOp->Asl.CompileFlags |= NODE_IS_RESOURCE_DESC;
+        DescriptorTypeOp->Asl.CompileFlags |= OP_IS_RESOURCE_DESC;
         Rnode = RsDoOneResourceDescriptor (&Info, &State);
 
         /*
@@ -1070,7 +1111,7 @@ RsDoResourceTemplate (
      */
     Op->Asl.ParseOpcode               = PARSEOP_BUFFER;
     Op->Asl.AmlOpcode                 = AML_BUFFER_OP;
-    Op->Asl.CompileFlags              = NODE_AML_PACKAGE | NODE_IS_RESOURCE_DESC;
+    Op->Asl.CompileFlags              = OP_AML_PACKAGE | OP_IS_RESOURCE_DESC;
     UtSetParseOpName (Op);
 
     BufferLengthOp->Asl.ParseOpcode   = PARSEOP_INTEGER;
@@ -1082,8 +1123,8 @@ RsDoResourceTemplate (
     BufferOp->Asl.AmlOpcode           = AML_RAW_DATA_CHAIN;
     BufferOp->Asl.AmlOpcodeLength     = 0;
     BufferOp->Asl.AmlLength           = CurrentByteOffset;
-    BufferOp->Asl.Value.Buffer        = (UINT8 *) HeadRnode.Next;
-    BufferOp->Asl.CompileFlags       |= NODE_IS_RESOURCE_DATA;
+    BufferOp->Asl.Value.Buffer        = ACPI_CAST_PTR (UINT8,  HeadRnode.Next);
+    BufferOp->Asl.CompileFlags       |= OP_IS_RESOURCE_DATA;
     UtSetParseOpName (BufferOp);
 
     return;

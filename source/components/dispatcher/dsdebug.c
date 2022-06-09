@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -96,7 +96,7 @@ AcpiDsPrintNodePathname (
 
     Buffer.Length = ACPI_ALLOCATE_LOCAL_BUFFER;
 
-    Status = AcpiNsHandleToPathname (Node, &Buffer, FALSE);
+    Status = AcpiNsHandleToPathname (Node, &Buffer, TRUE);
     if (ACPI_SUCCESS (Status))
     {
         if (Message)
@@ -143,9 +143,10 @@ AcpiDsDumpMethodStack (
 
     ACPI_FUNCTION_TRACE (DsDumpMethodStack);
 
+
     /* Ignore control codes, they are not errors */
 
-    if ((Status & AE_CODE_MASK) == AE_CODE_CONTROL)
+    if (ACPI_CNTL_EXCEPTION (Status))
     {
         return_VOID;
     }
@@ -175,6 +176,7 @@ AcpiDsDumpMethodStack (
     ACPI_DEBUG_PRINT ((ACPI_DB_DISPATCH,
         "\n**** Exception %s during execution of method ",
         AcpiFormatException (Status)));
+
     AcpiDsPrintNodePathname (WalkState->MethodNode, NULL);
 
     /* Display stack of executing methods */
@@ -191,8 +193,8 @@ AcpiDsDumpMethodStack (
         if (MethodDesc)
         {
             AcpiExStopTraceMethod (
-                    (ACPI_NAMESPACE_NODE *) MethodDesc->Method.Node,
-                    MethodDesc, WalkState);
+                (ACPI_NAMESPACE_NODE *) MethodDesc->Method.Node,
+                MethodDesc, WalkState);
         }
 
         ACPI_DEBUG_PRINT ((ACPI_DB_DISPATCH,
@@ -211,7 +213,13 @@ AcpiDsDumpMethodStack (
                 Op->Common.Next = NULL;
 
 #ifdef ACPI_DISASSEMBLER
-                AcpiDmDisassemble (NextWalkState, Op, ACPI_UINT32_MAX);
+                if (WalkState->MethodNode != AcpiGbl_RootNode)
+                {
+                    /* More verbose if not module-level code */
+
+                    AcpiOsPrintf ("Failed at ");
+                    AcpiDmDisassemble (NextWalkState, Op, ACPI_UINT32_MAX);
+                }
 #endif
                 Op->Common.Next = Next;
             }
@@ -220,8 +228,8 @@ AcpiDsDumpMethodStack (
         {
             /*
              * This method has called another method
-             * NOTE: the method call parse subtree is already deleted at this
-             * point, so we cannot disassemble the method invocation.
+             * NOTE: the method call parse subtree is already deleted at
+             * this point, so we cannot disassemble the method invocation.
              */
             ACPI_DEBUG_PRINT_RAW ((ACPI_DB_DISPATCH, "Call to method "));
             AcpiDsPrintNodePathname (PreviousMethod, NULL);

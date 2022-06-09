@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -47,6 +47,7 @@
 #include "acevents.h"
 #include "acinterp.h"
 #include "acnamesp.h"
+#include "acparser.h"
 
 #define _COMPONENT          ACPI_COMPILER
         ACPI_MODULE_NAME    ("aslstubs")
@@ -57,10 +58,18 @@
  * Things like Events, Global Lock, etc. are not used
  * by the compiler, so they are stubbed out here.
  */
-void
-AcpiNsExecModuleCodeList (
+ACPI_STATUS
+AcpiNsInitializeObjects (
     void)
 {
+    return (AE_OK);
+}
+
+ACPI_STATUS
+AcpiPsExecuteTable (
+    ACPI_EVALUATE_INFO      *Info)
+{
+    return (AE_OK);
 }
 
 ACPI_STATUS
@@ -120,6 +129,13 @@ AcpiDsStoreObjectToLocal (
 }
 
 ACPI_STATUS
+AcpiEvInstallRegionHandlers (
+    void)
+{
+    return (AE_OK);
+}
+
+ACPI_STATUS
 AcpiEvQueueNotifyRequest (
     ACPI_NAMESPACE_NODE     *Node,
     UINT32                  NotifyValue)
@@ -142,6 +158,13 @@ AcpiEvDeleteGpeBlock (
     return (AE_OK);
 }
 
+void
+AcpiEvUpdateGpes (
+    ACPI_OWNER_ID           TableOwnerId)
+{
+    return;
+}
+
 ACPI_STATUS
 AcpiEvAcquireGlobalLock (
     UINT16                  Timeout)
@@ -159,8 +182,7 @@ AcpiEvReleaseGlobalLock (
 
 ACPI_STATUS
 AcpiEvInitializeRegion (
-    ACPI_OPERAND_OBJECT     *RegionObj,
-    BOOLEAN                 AcpiNsLocked)
+    ACPI_OPERAND_OBJECT     *RegionObj)
 {
     return (AE_OK);
 }
@@ -269,4 +291,46 @@ AcpiTbFindTable (
     UINT32                  *TableIndex)
 {
     return (AE_SUPPORT);
+}
+
+ACPI_STATUS
+AcpiNsLoadTable (
+    UINT32                  TableIndex,
+    ACPI_NAMESPACE_NODE     *Node)
+{
+    return (AE_NOT_IMPLEMENTED);
+}
+
+ACPI_STATUS
+AcpiDsRestartControlMethod (
+    ACPI_WALK_STATE         *WalkState,
+    ACPI_OPERAND_OBJECT     *ReturnDesc)
+{
+    return (AE_OK);
+}
+
+void
+AcpiDsTerminateControlMethod (
+    ACPI_OPERAND_OBJECT     *MethodDesc,
+    ACPI_WALK_STATE         *WalkState)
+{
+    return;
+}
+
+ACPI_STATUS
+AcpiDsCallControlMethod (
+    ACPI_THREAD_STATE       *Thread,
+    ACPI_WALK_STATE         *WalkState,
+    ACPI_PARSE_OBJECT       *Op)
+{
+    return (AE_OK);
+}
+
+ACPI_STATUS
+AcpiDsMethodDataInitArgs (
+    ACPI_OPERAND_OBJECT     **Params,
+    UINT32                  MaxParamCount,
+    ACPI_WALK_STATE         *WalkState)
+{
+    return (AE_OK);
 }

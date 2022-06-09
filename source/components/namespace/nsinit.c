@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -46,6 +46,7 @@
 #include "acnamesp.h"
 #include "acdispat.h"
 #include "acinterp.h"
+#include "acevents.h"
 
 #define _COMPONENT          ACPI_NAMESPACE
         ACPI_MODULE_NAME    ("nsinit")
@@ -98,32 +99,35 @@ AcpiNsInitializeObjects (
     ACPI_FUNCTION_TRACE (NsInitializeObjects);
 
 
+    ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
+        "[Init] Completing Initialization of ACPI Objects\n"));
     ACPI_DEBUG_PRINT ((ACPI_DB_DISPATCH,
         "**** Starting initialization of namespace objects ****\n"));
     ACPI_DEBUG_PRINT_RAW ((ACPI_DB_INIT,
-        "Completing Region/Field/Buffer/Package initialization:\n"));
+        "Final data object initialization: "));
 
-    /* Set all init info to zero */
+    /* Clear the info block */
 
     memset (&Info, 0, sizeof (ACPI_INIT_WALK_INFO));
 
     /* Walk entire namespace from the supplied root */
 
+    /*
+     * TBD: will become ACPI_TYPE_PACKAGE as this type object
+     * is now the only one that supports deferred initialization
+     * (forward references).
+     */
     Status = AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
-                ACPI_UINT32_MAX, AcpiNsInitOneObject, NULL,
-                &Info, NULL);
+        ACPI_UINT32_MAX, AcpiNsInitOneObject, NULL, &Info, NULL);
     if (ACPI_FAILURE (Status))
     {
         ACPI_EXCEPTION ((AE_INFO, Status, "During WalkNamespace"));
     }
 
     ACPI_DEBUG_PRINT_RAW ((ACPI_DB_INIT,
-        "    Initialized %u/%u Regions %u/%u Fields %u/%u "
-        "Buffers %u/%u Packages (%u nodes)\n",
-        Info.OpRegionInit,  Info.OpRegionCount,
-        Info.FieldInit,     Info.FieldCount,
-        Info.BufferInit,    Info.BufferCount,
-        Info.PackageInit,   Info.PackageCount, Info.ObjectCount));
+        "Namespace contains %u (0x%X) objects\n",
+        Info.ObjectCount,
+        Info.ObjectCount));
 
     ACPI_DEBUG_PRINT ((ACPI_DB_DISPATCH,
         "%u Control Methods found\n%u Op Regions found\n",
@@ -151,84 +155,140 @@ AcpiNsInitializeObjects (
 
 ACPI_STATUS
 AcpiNsInitializeDevices (
-    void)
+    UINT32                  Flags)
 {
-    ACPI_STATUS             Status;
+    ACPI_STATUS             Status = AE_OK;
     ACPI_DEVICE_WALK_INFO   Info;
+    ACPI_HANDLE             Handle;
 
 
     ACPI_FUNCTION_TRACE (NsInitializeDevices);
 
 
-    /* Init counters */
-
-    Info.DeviceCount = 0;
-    Info.Num_STA = 0;
-    Info.Num_INI = 0;
-
-    ACPI_DEBUG_PRINT_RAW ((ACPI_DB_INIT,
-        "Initializing Device/Processor/Thermal objects "
-        "and executing _INI/_STA methods:\n"));
-
-    /* Tree analysis: find all subtrees that contain _INI methods */
-
-    Status = AcpiNsWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
-                ACPI_UINT32_MAX, FALSE, AcpiNsFindIniMethods, NULL, &Info, NULL);
-    if (ACPI_FAILURE (Status))
+    if (!(Flags & ACPI_NO_DEVICE_INIT))
     {
-        goto ErrorExit;
-    }
+        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
+            "[Init] Initializing ACPI Devices\n"));
 
-    /* Allocate the evaluation information block */
+        /* Init counters */
 
-    Info.EvaluateInfo = ACPI_ALLOCATE_ZEROED (sizeof (ACPI_EVALUATE_INFO));
-    if (!Info.EvaluateInfo)
-    {
-        Status = AE_NO_MEMORY;
-        goto ErrorExit;
+        Info.DeviceCount = 0;
+        Info.Num_STA = 0;
+        Info.Num_INI = 0;
+
+        ACPI_DEBUG_PRINT_RAW ((ACPI_DB_INIT,
+            "Initializing Device/Processor/Thermal objects "
+            "and executing _INI/_STA methods:\n"));
+
+        /* Tree analysis: find all subtrees that contain _INI methods */
+
+        Status = AcpiNsWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
+            ACPI_UINT32_MAX, FALSE, AcpiNsFindIniMethods, NULL, &Info, NULL);
+        if (ACPI_FAILURE (Status))
+        {
+            goto ErrorExit;
+        }
+
+        /* Allocate the evaluation information block */
+
+        Info.EvaluateInfo = ACPI_ALLOCATE_ZEROED (sizeof (ACPI_EVALUATE_INFO));
+        if (!Info.EvaluateInfo)
+        {
+            Status = AE_NO_MEMORY;
+            goto ErrorExit;
+        }
+
+        /*
+         * Execute the "global" _INI method that may appear at the root.
+         * This support is provided for Windows compatibility (Vista+) and
+         * is not part of the ACPI specification.
+         */
+        Info.EvaluateInfo->PrefixNode = AcpiGbl_RootNode;
+        Info.EvaluateInfo->RelativePathname = METHOD_NAME__INI;
+        Info.EvaluateInfo->Parameters = NULL;
+        Info.EvaluateInfo->Flags = ACPI_IGNORE_RETURN_VALUE;
+
+        Status = AcpiNsEvaluate (Info.EvaluateInfo);
+        if (ACPI_SUCCESS (Status))
+        {
+            Info.Num_INI++;
+        }
+
+        /*
+         * Execute \_SB._INI.
+         * There appears to be a strict order requirement for \_SB._INI,
+         * which should be evaluated before any _REG evaluations.
+         */
+        Status = AcpiGetHandle (NULL, "\\_SB", &Handle);
+        if (ACPI_SUCCESS (Status))
+        {
+            memset (Info.EvaluateInfo, 0, sizeof (ACPI_EVALUATE_INFO));
+            Info.EvaluateInfo->PrefixNode = Handle;
+            Info.EvaluateInfo->RelativePathname = METHOD_NAME__INI;
+            Info.EvaluateInfo->Parameters = NULL;
+            Info.EvaluateInfo->Flags = ACPI_IGNORE_RETURN_VALUE;
+
+            Status = AcpiNsEvaluate (Info.EvaluateInfo);
+            if (ACPI_SUCCESS (Status))
+            {
+                Info.Num_INI++;
+            }
+        }
     }
 
     /*
-     * Execute the "global" _INI method that may appear at the root. This
-     * support is provided for Windows compatibility (Vista+) and is not
-     * part of the ACPI specification.
+     * Run all _REG methods
+     *
+     * Note: Any objects accessed by the _REG methods will be automatically
+     * initialized, even if they contain executable AML (see the call to
+     * AcpiNsInitializeObjects below).
+     *
+     * Note: According to the ACPI specification, we actually needn't execute
+     * _REG for SystemMemory/SystemIo operation regions, but for PCI_Config
+     * operation regions, it is required to evaluate _REG for those on a PCI
+     * root bus that doesn't contain _BBN object. So this code is kept here
+     * in order not to break things.
      */
-    Info.EvaluateInfo->PrefixNode = AcpiGbl_RootNode;
-    Info.EvaluateInfo->RelativePathname = METHOD_NAME__INI;
-    Info.EvaluateInfo->Parameters = NULL;
-    Info.EvaluateInfo->Flags = ACPI_IGNORE_RETURN_VALUE;
-
-    Status = AcpiNsEvaluate (Info.EvaluateInfo);
-    if (ACPI_SUCCESS (Status))
+    if (!(Flags & ACPI_NO_ADDRESS_SPACE_INIT))
     {
-        Info.Num_INI++;
+        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
+            "[Init] Executing _REG OpRegion methods\n"));
+
+        Status = AcpiEvInitializeOpRegions ();
+        if (ACPI_FAILURE (Status))
+        {
+            goto ErrorExit;
+        }
     }
 
-    /* Walk namespace to execute all _INIs on present devices */
-
-    Status = AcpiNsWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
-                ACPI_UINT32_MAX, FALSE, AcpiNsInitOneDevice, NULL, &Info, NULL);
-
-    /*
-     * Any _OSI requests should be completed by now. If the BIOS has
-     * requested any Windows OSI strings, we will always truncate
-     * I/O addresses to 16 bits -- for Windows compatibility.
-     */
-    if (AcpiGbl_OsiData >= ACPI_OSI_WIN_2000)
+    if (!(Flags & ACPI_NO_DEVICE_INIT))
     {
-        AcpiGbl_TruncateIoAddresses = TRUE;
-    }
+        /* Walk namespace to execute all _INIs on present devices */
 
-    ACPI_FREE (Info.EvaluateInfo);
-    if (ACPI_FAILURE (Status))
-    {
-        goto ErrorExit;
-    }
+        Status = AcpiNsWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
+            ACPI_UINT32_MAX, FALSE, AcpiNsInitOneDevice, NULL, &Info, NULL);
 
-    ACPI_DEBUG_PRINT_RAW ((ACPI_DB_INIT,
-        "    Executed %u _INI methods requiring %u _STA executions "
-        "(examined %u objects)\n",
-        Info.Num_INI, Info.Num_STA, Info.DeviceCount));
+        /*
+         * Any _OSI requests should be completed by now. If the BIOS has
+         * requested any Windows OSI strings, we will always truncate
+         * I/O addresses to 16 bits -- for Windows compatibility.
+         */
+        if (AcpiGbl_OsiData >= ACPI_OSI_WIN_2000)
+        {
+            AcpiGbl_TruncateIoAddresses = TRUE;
+        }
+
+        ACPI_FREE (Info.EvaluateInfo);
+        if (ACPI_FAILURE (Status))
+        {
+            goto ErrorExit;
+        }
+
+        ACPI_DEBUG_PRINT_RAW ((ACPI_DB_INIT,
+            "    Executed %u _INI methods requiring %u _STA executions "
+            "(examined %u objects)\n",
+            Info.Num_INI, Info.Num_STA, Info.DeviceCount));
+    }
 
     return_ACPI_STATUS (Status);
 
@@ -236,6 +296,65 @@ AcpiNsInitializeDevices (
 ErrorExit:
     ACPI_EXCEPTION ((AE_INFO, Status, "During device initialization"));
     return_ACPI_STATUS (Status);
+}
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiNsInitOnePackage
+ *
+ * PARAMETERS:  ObjHandle       - Node
+ *              Level           - Current nesting level
+ *              Context         - Not used
+ *              ReturnValue     - Not used
+ *
+ * RETURN:      Status
+ *
+ * DESCRIPTION: Callback from AcpiWalkNamespace. Invoked for every package
+ *              within the namespace. Used during dynamic load of an SSDT.
+ *
+ ******************************************************************************/
+
+ACPI_STATUS
+AcpiNsInitOnePackage (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  Level,
+    void                    *Context,
+    void                    **ReturnValue)
+{
+    ACPI_STATUS             Status;
+    ACPI_OPERAND_OBJECT     *ObjDesc;
+    ACPI_NAMESPACE_NODE     *Node = (ACPI_NAMESPACE_NODE *) ObjHandle;
+
+
+    ObjDesc = AcpiNsGetAttachedObject (Node);
+    if (!ObjDesc)
+    {
+        return (AE_OK);
+    }
+
+    /* Exit if package is already initialized */
+
+    if (ObjDesc->Package.Flags & AOPOBJ_DATA_VALID)
+    {
+        return (AE_OK);
+    }
+
+    Status = AcpiDsGetPackageArguments (ObjDesc);
+    if (ACPI_FAILURE (Status))
+    {
+        return (AE_OK);
+    }
+
+    Status = AcpiUtWalkPackageTree (ObjDesc, NULL, AcpiDsInitPackageElement,
+        NULL);
+    if (ACPI_FAILURE (Status))
+    {
+        return (AE_OK);
+    }
+
+    ObjDesc->Package.Flags |= AOPOBJ_DATA_VALID;
+    return (AE_OK);
 }
 
 
@@ -251,7 +370,7 @@ ErrorExit:
  * RETURN:      Status
  *
  * DESCRIPTION: Callback from AcpiWalkNamespace. Invoked for every object
- *              within the  namespace.
+ *              within the namespace.
  *
  *              Currently, the only objects that require initialization are:
  *              1) Methods
@@ -335,45 +454,35 @@ AcpiNsInitOneObject (
     AcpiExEnterInterpreter ();
 
     /*
-     * Each of these types can contain executable AML code within the
-     * declaration.
+     * Only initialization of Package objects can be deferred, in order
+     * to support forward references.
      */
     switch (Type)
     {
-    case ACPI_TYPE_REGION:
-
-        Info->OpRegionInit++;
-        Status = AcpiDsGetRegionArguments (ObjDesc);
-        break;
-
-    case ACPI_TYPE_BUFFER_FIELD:
-
-        Info->FieldInit++;
-        Status = AcpiDsGetBufferFieldArguments (ObjDesc);
-        break;
-
     case ACPI_TYPE_LOCAL_BANK_FIELD:
+
+        /* TBD: BankFields do not require deferred init, remove this code */
 
         Info->FieldInit++;
         Status = AcpiDsGetBankFieldArguments (ObjDesc);
         break;
 
-    case ACPI_TYPE_BUFFER:
-
-        Info->BufferInit++;
-        Status = AcpiDsGetBufferArguments (ObjDesc);
-        break;
-
     case ACPI_TYPE_PACKAGE:
 
+        /* Complete the initialization/resolution of the package object */
+
         Info->PackageInit++;
-        Status = AcpiDsGetPackageArguments (ObjDesc);
+        Status = AcpiNsInitOnePackage (ObjHandle, Level, NULL, NULL);
         break;
 
     default:
 
-        /* No other types can get here */
+        /* No other types should get here */
 
+        Status = AE_TYPE;
+        ACPI_EXCEPTION ((AE_INFO, Status,
+            "Opcode is not deferred [%4.4s] (%s)",
+            AcpiUtGetNodeName (Node), AcpiUtGetTypeName (Type)));
         break;
     }
 
@@ -434,7 +543,7 @@ AcpiNsFindIniMethods (
 
     /* We are only looking for methods named _INI */
 
-    if (!ACPI_COMPARE_NAME (Node->Name.Ascii, METHOD_NAME__INI))
+    if (!ACPI_COMPARE_NAMESEG (Node->Name.Ascii, METHOD_NAME__INI))
     {
         return (AE_OK);
     }
@@ -611,33 +720,37 @@ AcpiNsInitOneDevice (
      * Note: We know there is an _INI within this subtree, but it may not be
      * under this particular device, it may be lower in the branch.
      */
-    ACPI_DEBUG_EXEC (AcpiUtDisplayInitPathname (
-        ACPI_TYPE_METHOD, DeviceNode, METHOD_NAME__INI));
-
-    memset (Info, 0, sizeof (ACPI_EVALUATE_INFO));
-    Info->PrefixNode = DeviceNode;
-    Info->RelativePathname = METHOD_NAME__INI;
-    Info->Parameters = NULL;
-    Info->Flags = ACPI_IGNORE_RETURN_VALUE;
-
-    Status = AcpiNsEvaluate (Info);
-    if (ACPI_SUCCESS (Status))
+    if (!ACPI_COMPARE_NAMESEG (DeviceNode->Name.Ascii, "_SB_") ||
+        DeviceNode->Parent != AcpiGbl_RootNode)
     {
-        WalkInfo->Num_INI++;
-    }
+        ACPI_DEBUG_EXEC (AcpiUtDisplayInitPathname (
+            ACPI_TYPE_METHOD, DeviceNode, METHOD_NAME__INI));
+
+        memset (Info, 0, sizeof (ACPI_EVALUATE_INFO));
+        Info->PrefixNode = DeviceNode;
+        Info->RelativePathname = METHOD_NAME__INI;
+        Info->Parameters = NULL;
+        Info->Flags = ACPI_IGNORE_RETURN_VALUE;
+
+        Status = AcpiNsEvaluate (Info);
+        if (ACPI_SUCCESS (Status))
+        {
+            WalkInfo->Num_INI++;
+        }
 
 #ifdef ACPI_DEBUG_OUTPUT
-    else if (Status != AE_NOT_FOUND)
-    {
-        /* Ignore error and move on to next device */
+        else if (Status != AE_NOT_FOUND)
+        {
+            /* Ignore error and move on to next device */
 
-        char *ScopeName = AcpiNsGetExternalPathname (Info->Node);
+            char *ScopeName = AcpiNsGetNormalizedPathname (DeviceNode, TRUE);
 
-        ACPI_EXCEPTION ((AE_INFO, Status, "during %s._INI execution",
-            ScopeName));
-        ACPI_FREE (ScopeName);
-    }
+            ACPI_EXCEPTION ((AE_INFO, Status, "during %s._INI execution",
+                ScopeName));
+            ACPI_FREE (ScopeName);
+        }
 #endif
+    }
 
     /* Ignore errors from above */
 

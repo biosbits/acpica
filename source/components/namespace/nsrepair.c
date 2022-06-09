@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -114,6 +114,11 @@ static const ACPI_SIMPLE_REPAIR_INFO    AcpiObjectRepairInfo[] =
                 ACPI_NOT_PACKAGE_ELEMENT,
                 AcpiNsConvertToResource },
 
+    /* Object reference conversions */
+
+    { "_DEP", ACPI_RTYPE_STRING, ACPI_ALL_PACKAGE_ELEMENTS,
+                AcpiNsConvertToReference },
+
     /* Unicode conversions */
 
     { "_MLS", ACPI_RTYPE_STRING, 1,
@@ -174,7 +179,8 @@ AcpiNsSimpleRepair (
                 ACPI_WARN_ALWAYS, "Missing expected return value"));
         }
 
-        Status = Predefined->ObjectConverter (ReturnObject, &NewObject);
+        Status = Predefined->ObjectConverter (Info->Node, ReturnObject,
+            &NewObject);
         if (ACPI_FAILURE (Status))
         {
             /* A fatal error occurred during a conversion */
@@ -222,7 +228,7 @@ AcpiNsSimpleRepair (
                     ACPI_WARN_ALWAYS, "Found unexpected NULL package element"));
 
                 Status = AcpiNsRepairNullElement (Info, ExpectedBtypes,
-                            PackageIndex, ReturnObjectPtr);
+                    PackageIndex, ReturnObjectPtr);
                 if (ACPI_SUCCESS (Status))
                 {
                     return (AE_OK); /* Repair was successful */
@@ -296,24 +302,12 @@ ObjectRepaired:
 
     if (PackageIndex != ACPI_NOT_PACKAGE_ELEMENT)
     {
-        /*
-         * The original object is a package element. We need to
-         * decrement the reference count of the original object,
-         * for removing it from the package.
-         *
-         * However, if the original object was just wrapped with a
-         * package object as part of the repair, we don't need to
-         * change the reference count.
-         */
+        /* Update reference count of new object */
+
         if (!(Info->ReturnFlags & ACPI_OBJECT_WRAPPED))
         {
             NewObject->Common.ReferenceCount =
                 ReturnObject->Common.ReferenceCount;
-
-            if (ReturnObject->Common.ReferenceCount > 1)
-            {
-                ReturnObject->Common.ReferenceCount--;
-            }
         }
 
         ACPI_DEBUG_PRINT ((ACPI_DB_REPAIR,
@@ -368,18 +362,20 @@ AcpiNsMatchSimpleRepair (
     ThisName = AcpiObjectRepairInfo;
     while (ThisName->ObjectConverter)
     {
-        if (ACPI_COMPARE_NAME (Node->Name.Ascii, ThisName->Name))
+        if (ACPI_COMPARE_NAMESEG (Node->Name.Ascii, ThisName->Name))
         {
             /* Check if we can actually repair this name/type combination */
 
             if ((ReturnBtype & ThisName->UnexpectedBtypes) &&
-                (PackageIndex == ThisName->PackageIndex))
+                (ThisName->PackageIndex == ACPI_ALL_PACKAGE_ELEMENTS ||
+                 PackageIndex == ThisName->PackageIndex))
             {
                 return (ThisName);
             }
 
             return (NULL);
         }
+
         ThisName++;
     }
 
@@ -464,11 +460,13 @@ AcpiNsRepairNullElement (
 
     /* Set the reference count according to the parent Package object */
 
-    NewObject->Common.ReferenceCount = Info->ParentPackage->Common.ReferenceCount;
+    NewObject->Common.ReferenceCount =
+        Info->ParentPackage->Common.ReferenceCount;
 
     ACPI_DEBUG_PRINT ((ACPI_DB_REPAIR,
         "%s: Converted NULL package element to expected %s at index %u\n",
-         Info->FullPathname, AcpiUtGetObjectTypeName (NewObject), PackageIndex));
+        Info->FullPathname, AcpiUtGetObjectTypeName (NewObject),
+        PackageIndex));
 
     *ReturnObjectPtr = NewObject;
     Info->ReturnFlags |= ACPI_OBJECT_REPAIRED;
@@ -551,6 +549,7 @@ AcpiNsRemoveNullElements (
             *Dest = *Source;
             Dest++;
         }
+
         Source++;
     }
 
@@ -607,8 +606,8 @@ AcpiNsWrapWithPackage (
 
 
     /*
-     * Create the new outer package and populate it. The new package will
-     * have a single element, the lone sub-object.
+     * Create the new outer package and populate it. The new
+     * package will have a single element, the lone sub-object.
      */
     PkgObjDesc = AcpiUtCreatePackageObject (1);
     if (!PkgObjDesc)

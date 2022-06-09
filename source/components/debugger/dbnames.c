@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -46,9 +46,8 @@
 #include "acnamesp.h"
 #include "acdebug.h"
 #include "acpredef.h"
+#include "acinterp.h"
 
-
-#ifdef ACPI_DEBUGGER
 
 #define _COMPONENT          ACPI_CA_DEBUGGER
         ACPI_MODULE_NAME    ("dbnames")
@@ -72,6 +71,13 @@ AcpiDbWalkForPredefinedNames (
 
 static ACPI_STATUS
 AcpiDbWalkForSpecificObjects (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  NestingLevel,
+    void                    *Context,
+    void                    **ReturnValue);
+
+static ACPI_STATUS
+AcpiDbWalkForObjectCounts (
     ACPI_HANDLE             ObjHandle,
     UINT32                  NestingLevel,
     void                    *Context,
@@ -125,7 +131,13 @@ static ACPI_DB_ARGUMENT_INFO    AcpiDbObjectTypes [] =
     {"BANKFIELDS"},
     {"INDEXFIELDS"},
     {"REFERENCES"},
-    {"ALIAS"},
+    {"ALIASES"},
+    {"METHODALIASES"},
+    {"NOTIFY"},
+    {"ADDRESSHANDLER"},
+    {"RESOURCE"},
+    {"RESOURCEFIELD"},
+    {"SCOPES"},
     {NULL}           /* Must be null terminated */
 };
 
@@ -163,8 +175,8 @@ AcpiDbSetScope (
     {
         /* Validate new scope from the root */
 
-        Status = AcpiNsGetNode (AcpiGbl_RootNode, Name, ACPI_NS_NO_UPSEARCH,
-                    &Node);
+        Status = AcpiNsGetNode (AcpiGbl_RootNode, Name,
+            ACPI_NS_NO_UPSEARCH, &Node);
         if (ACPI_FAILURE (Status))
         {
             goto ErrorExit;
@@ -176,8 +188,8 @@ AcpiDbSetScope (
     {
         /* Validate new scope relative to old scope */
 
-        Status = AcpiNsGetNode (AcpiGbl_DbScopeNode, Name, ACPI_NS_NO_UPSEARCH,
-                    &Node);
+        Status = AcpiNsGetNode (AcpiGbl_DbScopeNode, Name,
+            ACPI_NS_NO_UPSEARCH, &Node);
         if (ACPI_FAILURE (Status))
         {
             goto ErrorExit;
@@ -194,7 +206,7 @@ AcpiDbSetScope (
     }
 
     if (AcpiUtSafeStrcat (AcpiGbl_DbScopeBuf, sizeof (AcpiGbl_DbScopeBuf),
-        "\\"))
+            "\\"))
     {
         Status = AE_BUFFER_OVERFLOW;
         goto ErrorExit;
@@ -253,8 +265,17 @@ AcpiDbDumpNamespace (
     }
 
     AcpiDbSetOutputDestination (ACPI_DB_DUPLICATE_OUTPUT);
-    AcpiOsPrintf ("ACPI Namespace (from %4.4s (%p) subtree):\n",
-        ((ACPI_NAMESPACE_NODE *) SubtreeEntry)->Name.Ascii, SubtreeEntry);
+
+    if (((ACPI_NAMESPACE_NODE *) SubtreeEntry)->Parent)
+    {
+        AcpiOsPrintf ("ACPI Namespace (from %4.4s (%p) subtree):\n",
+            ((ACPI_NAMESPACE_NODE *) SubtreeEntry)->Name.Ascii, SubtreeEntry);
+    }
+    else
+    {
+        AcpiOsPrintf ("ACPI Namespace (from %s):\n",
+            ACPI_NAMESPACE_ROOT);
+    }
 
     /* Display the subtree */
 
@@ -334,8 +355,8 @@ AcpiDbDumpNamespaceByOwner (
     /* Display the subtree */
 
     AcpiDbSetOutputDestination (ACPI_DB_REDIRECTABLE_OUTPUT);
-    AcpiNsDumpObjects (ACPI_TYPE_ANY, ACPI_DISPLAY_SUMMARY, MaxDepth, OwnerId,
-        SubtreeEntry);
+    AcpiNsDumpObjects (ACPI_TYPE_ANY, ACPI_DISPLAY_SUMMARY, MaxDepth,
+        OwnerId, SubtreeEntry);
     AcpiDbSetOutputDestination (ACPI_DB_CONSOLE_OUTPUT);
 }
 
@@ -374,7 +395,8 @@ AcpiDbWalkAndMatchName (
         /* Wildcard support */
 
         if ((RequestedName[i] != '?') &&
-            (RequestedName[i] != ((ACPI_NAMESPACE_NODE *) ObjHandle)->Name.Ascii[i]))
+            (RequestedName[i] != ((ACPI_NAMESPACE_NODE *)
+                ObjHandle)->Name.Ascii[i]))
         {
             /* No match, just exit */
 
@@ -385,13 +407,15 @@ AcpiDbWalkAndMatchName (
     /* Get the full pathname to this object */
 
     Buffer.Length = ACPI_ALLOCATE_LOCAL_BUFFER;
-    Status = AcpiNsHandleToPathname (ObjHandle, &Buffer, FALSE);
+    Status = AcpiNsHandleToPathname (ObjHandle, &Buffer, TRUE);
     if (ACPI_FAILURE (Status))
     {
-        AcpiOsPrintf ("Could Not get pathname for object %p\n", ObjHandle);
+        AcpiOsPrintf ("Could Not get pathname for object %p\n",
+            ObjHandle);
     }
     else
     {
+        Info.Count = 0;
         Info.OwnerId = ACPI_OWNER_ID_MAX;
         Info.DebugLevel = ACPI_UINT32_MAX;
         Info.DisplayType = ACPI_DISPLAY_SUMMARY | ACPI_DISPLAY_SHORT;
@@ -426,7 +450,7 @@ AcpiDbFindNameInNamespace (
     char                    *AcpiNamePtr = AcpiName;
 
 
-    if (strlen (NameArg) > 4)
+    if (strlen (NameArg) > ACPI_NAMESEG_SIZE)
     {
         AcpiOsPrintf ("Name must be no longer than 4 characters\n");
         return (AE_OK);
@@ -444,8 +468,8 @@ AcpiDbFindNameInNamespace (
 
     /* Walk the namespace from the root */
 
-    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
-                        AcpiDbWalkAndMatchName, NULL, AcpiName, NULL);
+    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
+        ACPI_UINT32_MAX, AcpiDbWalkAndMatchName, NULL, AcpiName, NULL);
 
     AcpiDbSetOutputDestination (ACPI_DB_CONSOLE_OUTPUT);
     return (AE_OK);
@@ -486,7 +510,7 @@ AcpiDbWalkForPredefinedNames (
         return (AE_OK);
     }
 
-    Pathname = AcpiNsGetExternalPathname (Node);
+    Pathname = AcpiNsGetNormalizedPathname (Node, TRUE);
     if (!Pathname)
     {
         return (AE_OK);
@@ -546,10 +570,132 @@ AcpiDbCheckPredefinedNames (
 
     /* Search all nodes in namespace */
 
-    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
-                AcpiDbWalkForPredefinedNames, NULL, (void *) &Count, NULL);
+    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
+        ACPI_UINT32_MAX, AcpiDbWalkForPredefinedNames,
+        NULL, (void *) &Count, NULL);
 
     AcpiOsPrintf ("Found %u predefined names in the namespace\n", Count);
+}
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiDbWalkForObjectCounts
+ *
+ * PARAMETERS:  Callback from WalkNamespace
+ *
+ * RETURN:      Status
+ *
+ * DESCRIPTION: Display short info about objects in the namespace
+ *
+ ******************************************************************************/
+
+static ACPI_STATUS
+AcpiDbWalkForObjectCounts (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  NestingLevel,
+    void                    *Context,
+    void                    **ReturnValue)
+{
+    ACPI_OBJECT_INFO        *Info = (ACPI_OBJECT_INFO *) Context;
+    ACPI_NAMESPACE_NODE     *Node = (ACPI_NAMESPACE_NODE *) ObjHandle;
+
+
+    if (Node->Type > ACPI_TYPE_NS_NODE_MAX)
+    {
+        AcpiOsPrintf ("[%4.4s]: Unknown object type %X\n",
+            Node->Name.Ascii, Node->Type);
+    }
+    else
+    {
+        Info->Types[Node->Type]++;
+    }
+
+    return (AE_OK);
+}
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiDbWalkForFields
+ *
+ * PARAMETERS:  Callback from WalkNamespace
+ *
+ * RETURN:      Status
+ *
+ * DESCRIPTION: Display short info about objects in the namespace
+ *
+ ******************************************************************************/
+
+static ACPI_STATUS
+AcpiDbWalkForFields (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  NestingLevel,
+    void                    *Context,
+    void                    **ReturnValue)
+{
+    ACPI_OBJECT             *RetValue;
+    ACPI_REGION_WALK_INFO   *Info = (ACPI_REGION_WALK_INFO *) Context;
+    ACPI_BUFFER             Buffer;
+    ACPI_STATUS             Status;
+    ACPI_NAMESPACE_NODE     *Node = AcpiNsValidateHandle (ObjHandle);
+
+
+    if (!Node)
+    {
+       return (AE_OK);
+    }
+    if (Node->Object->Field.RegionObj->Region.SpaceId != Info->AddressSpaceId)
+    {
+       return (AE_OK);
+    }
+
+    Info->Count++;
+
+    /* Get and display the full pathname to this object */
+
+    Buffer.Length = ACPI_ALLOCATE_LOCAL_BUFFER;
+    Status = AcpiNsHandleToPathname (ObjHandle, &Buffer, TRUE);
+    if (ACPI_FAILURE (Status))
+    {
+        AcpiOsPrintf ("Could Not get pathname for object %p\n", ObjHandle);
+        return (AE_OK);
+    }
+
+    AcpiOsPrintf ("%s ", (char *) Buffer.Pointer);
+    ACPI_FREE (Buffer.Pointer);
+
+    Buffer.Length = ACPI_ALLOCATE_LOCAL_BUFFER;
+    AcpiEvaluateObject (ObjHandle, NULL, NULL, &Buffer);
+
+    /*
+     * Since this is a field unit, surround the output in braces
+     */
+    AcpiOsPrintf ("{");
+
+    RetValue = (ACPI_OBJECT *) Buffer.Pointer;
+    switch (RetValue->Type)
+    {
+        case ACPI_TYPE_INTEGER:
+
+            AcpiOsPrintf ("%8.8X%8.8X", ACPI_FORMAT_UINT64 (RetValue->Integer.Value));
+            break;
+
+        case ACPI_TYPE_BUFFER:
+
+            AcpiUtDumpBuffer (RetValue->Buffer.Pointer,
+                RetValue->Buffer.Length, DB_DISPLAY_DATA_ONLY | DB_BYTE_DISPLAY, 0);
+            break;
+
+        default:
+
+            break;
+    }
+
+    AcpiOsPrintf ("}\n");
+
+    ACPI_FREE (Buffer.Pointer);
+    return (AE_OK);
 }
 
 
@@ -582,7 +728,7 @@ AcpiDbWalkForSpecificObjects (
     /* Get and display the full pathname to this object */
 
     Buffer.Length = ACPI_ALLOCATE_LOCAL_BUFFER;
-    Status = AcpiNsHandleToPathname (ObjHandle, &Buffer, FALSE);
+    Status = AcpiNsHandleToPathname (ObjHandle, &Buffer, TRUE);
     if (ACPI_FAILURE (Status))
     {
         AcpiOsPrintf ("Could Not get pathname for object %p\n", ObjHandle);
@@ -619,7 +765,39 @@ AcpiDbDisplayObjects (
 {
     ACPI_WALK_INFO          Info;
     ACPI_OBJECT_TYPE        Type;
+    ACPI_OBJECT_INFO        *ObjectInfo;
+    UINT32                  i;
+    UINT32                  TotalObjects = 0;
 
+
+    /* No argument means display summary/count of all object types */
+
+    if (!ObjTypeArg)
+    {
+        ObjectInfo = ACPI_ALLOCATE_ZEROED (sizeof (ACPI_OBJECT_INFO));
+
+        /* Walk the namespace from the root */
+
+        (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
+            ACPI_UINT32_MAX, AcpiDbWalkForObjectCounts, NULL,
+            (void *) ObjectInfo, NULL);
+
+        AcpiOsPrintf ("\nSummary of namespace objects:\n\n");
+
+        for (i = 0; i < ACPI_TOTAL_TYPES; i++)
+        {
+            AcpiOsPrintf ("%8u   %s\n", ObjectInfo->Types[i],
+                AcpiUtGetTypeName (i));
+
+            TotalObjects += ObjectInfo->Types[i];
+        }
+
+        AcpiOsPrintf ("\n%8u   Total namespace objects\n\n",
+            TotalObjects);
+
+        ACPI_FREE (ObjectInfo);
+        return (AE_OK);
+    }
 
     /* Get the object type */
 
@@ -645,13 +823,49 @@ AcpiDbDisplayObjects (
     /* Walk the namespace from the root */
 
     (void) AcpiWalkNamespace (Type, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
-                AcpiDbWalkForSpecificObjects, NULL, (void *) &Info, NULL);
+        AcpiDbWalkForSpecificObjects, NULL, (void *) &Info, NULL);
 
     AcpiOsPrintf (
         "\nFound %u objects of type [%s] in the current ACPI Namespace\n",
         Info.Count, AcpiUtGetTypeName (Type));
 
     AcpiDbSetOutputDestination (ACPI_DB_CONSOLE_OUTPUT);
+    return (AE_OK);
+}
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiDbDisplayFields
+ *
+ * PARAMETERS:  ObjTypeArg          - Type of object to display
+ *              DisplayCountArg     - Max depth to display
+ *
+ * RETURN:      None
+ *
+ * DESCRIPTION: Display objects in the namespace of the requested type
+ *
+ ******************************************************************************/
+
+ACPI_STATUS
+AcpiDbDisplayFields (
+    UINT32                  AddressSpaceId)
+{
+    ACPI_REGION_WALK_INFO  Info;
+
+
+    Info.Count = 0;
+    Info.OwnerId = ACPI_OWNER_ID_MAX;
+    Info.DebugLevel = ACPI_UINT32_MAX;
+    Info.DisplayType = ACPI_DISPLAY_SUMMARY | ACPI_DISPLAY_SHORT;
+    Info.AddressSpaceId = AddressSpaceId;
+
+    /* Walk the namespace from the root */
+
+    (void) AcpiWalkNamespace (ACPI_TYPE_LOCAL_REGION_FIELD, ACPI_ROOT_OBJECT,
+          ACPI_UINT32_MAX, AcpiDbWalkForFields, NULL,
+          (void *) &Info, NULL);
+
     return (AE_OK);
 }
 
@@ -689,9 +903,11 @@ AcpiDbIntegrityWalk (
     {
         if (ACPI_GET_DESCRIPTOR_TYPE (Node) != ACPI_DESC_TYPE_NAMED)
         {
-            AcpiOsPrintf ("Invalid Descriptor Type for Node %p [%s] - is %2.2X should be %2.2X\n",
-                Node, AcpiUtGetDescriptorName (Node), ACPI_GET_DESCRIPTOR_TYPE (Node),
-                ACPI_DESC_TYPE_NAMED);
+            AcpiOsPrintf (
+                "Invalid Descriptor Type for Node %p [%s] - "
+                "is %2.2X should be %2.2X\n",
+                Node, AcpiUtGetDescriptorName (Node),
+                ACPI_GET_DESCRIPTOR_TYPE (Node), ACPI_DESC_TYPE_NAMED);
             return (AE_OK);
         }
 
@@ -713,7 +929,7 @@ AcpiDbIntegrityWalk (
         return (AE_OK);
     }
 
-    if (!AcpiUtValidAcpiName (Node->Name.Ascii))
+    if (!AcpiUtValidNameseg (Node->Name.Ascii))
     {
         AcpiOsPrintf ("Invalid AcpiName for Node %p\n", Node);
         return (AE_OK);
@@ -754,8 +970,8 @@ AcpiDbCheckIntegrity (
 
     /* Search all nodes in namespace */
 
-    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
-                    AcpiDbIntegrityWalk, NULL, (void *) &Info, NULL);
+    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
+        ACPI_UINT32_MAX, AcpiDbIntegrityWalk, NULL, (void *) &Info, NULL);
 
     AcpiOsPrintf ("Verified %u namespace nodes with %u Objects\n",
         Info.Nodes, Info.Objects);
@@ -835,8 +1051,9 @@ AcpiDbFindReferences (
 
     /* Search all nodes in namespace */
 
-    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
-                    AcpiDbWalkForReferences, NULL, (void *) ObjDesc, NULL);
+    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
+        ACPI_UINT32_MAX, AcpiDbWalkForReferences, NULL,
+        (void *) ObjDesc, NULL);
 }
 
 
@@ -877,7 +1094,7 @@ AcpiDbBusWalk (
     /* Exit if there is no _PRT under this device */
 
     Status = AcpiGetHandle (Node, METHOD_NAME__PRT,
-                ACPI_CAST_PTR (ACPI_HANDLE, &TempNode));
+        ACPI_CAST_PTR (ACPI_HANDLE, &TempNode));
     if (ACPI_FAILURE (Status))
     {
         return (AE_OK);
@@ -886,10 +1103,11 @@ AcpiDbBusWalk (
     /* Get the full path to this device object */
 
     Buffer.Length = ACPI_ALLOCATE_LOCAL_BUFFER;
-    Status = AcpiNsHandleToPathname (ObjHandle, &Buffer, FALSE);
+    Status = AcpiNsHandleToPathname (ObjHandle, &Buffer, TRUE);
     if (ACPI_FAILURE (Status))
     {
-        AcpiOsPrintf ("Could Not get pathname for object %p\n", ObjHandle);
+        AcpiOsPrintf ("Could Not get pathname for object %p\n",
+            ObjHandle);
         return (AE_OK);
     }
 
@@ -918,7 +1136,8 @@ AcpiDbBusWalk (
 
     if (Info->Valid & ACPI_VALID_ADR)
     {
-        AcpiOsPrintf ("_ADR: %8.8X%8.8X\n", ACPI_FORMAT_UINT64 (Info->Address));
+        AcpiOsPrintf ("_ADR: %8.8X%8.8X\n",
+            ACPI_FORMAT_UINT64 (Info->Address));
     }
     else
     {
@@ -969,7 +1188,7 @@ AcpiDbBusWalk (
  *
  * RETURN:      None
  *
- * DESCRIPTION: Display info about system busses.
+ * DESCRIPTION: Display info about system buses.
  *
  ******************************************************************************/
 
@@ -979,8 +1198,6 @@ AcpiDbGetBusInfo (
 {
     /* Search all nodes in namespace */
 
-    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
-                    AcpiDbBusWalk, NULL, NULL, NULL);
+    (void) AcpiWalkNamespace (ACPI_TYPE_ANY, ACPI_ROOT_OBJECT,
+        ACPI_UINT32_MAX, AcpiDbBusWalk, NULL, NULL, NULL);
 }
-
-#endif /* ACPI_DEBUGGER */

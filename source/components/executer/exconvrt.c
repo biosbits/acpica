@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2022, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
  * NO WARRANTY
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
  * HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
@@ -64,10 +64,10 @@ AcpiExConvertToAscii (
  *
  * FUNCTION:    AcpiExConvertToInteger
  *
- * PARAMETERS:  ObjDesc         - Object to be converted. Must be an
- *                                Integer, Buffer, or String
- *              ResultDesc      - Where the new Integer object is returned
- *              Flags           - Used for string conversion
+ * PARAMETERS:  ObjDesc             - Object to be converted. Must be an
+ *                                    Integer, Buffer, or String
+ *              ResultDesc          - Where the new Integer object is returned
+ *              ImplicitConversion  - Used for string conversion
  *
  * RETURN:      Status
  *
@@ -79,14 +79,13 @@ ACPI_STATUS
 AcpiExConvertToInteger (
     ACPI_OPERAND_OBJECT     *ObjDesc,
     ACPI_OPERAND_OBJECT     **ResultDesc,
-    UINT32                  Flags)
+    UINT32                  ImplicitConversion)
 {
     ACPI_OPERAND_OBJECT     *ReturnDesc;
     UINT8                   *Pointer;
     UINT64                  Result;
     UINT32                  i;
     UINT32                  Count;
-    ACPI_STATUS             Status;
 
 
     ACPI_FUNCTION_TRACE_PTR (ExConvertToInteger, ObjDesc);
@@ -136,11 +135,17 @@ AcpiExConvertToInteger (
          * hexadecimal as per the ACPI specification. The only exception (as
          * of ACPI 3.0) is that the ToInteger() operator allows both decimal
          * and hexadecimal strings (hex prefixed with "0x").
+         *
+         * Explicit conversion is used only by ToInteger.
+         * All other string-to-integer conversions are implicit conversions.
          */
-        Status = AcpiUtStrtoul64 ((char *) Pointer, Flags, &Result);
-        if (ACPI_FAILURE (Status))
+        if (ImplicitConversion)
         {
-            return_ACPI_STATUS (Status);
+            Result = AcpiUtImplicitStrtoul64 (ACPI_CAST_PTR (char, Pointer));
+        }
+        else
+        {
+            Result = AcpiUtExplicitStrtoul64 (ACPI_CAST_PTR (char, Pointer));
         }
         break;
 
@@ -251,9 +256,7 @@ AcpiExConvertToBuffer (
         /* Copy the integer to the buffer, LSB first */
 
         NewBuf = ReturnDesc->Buffer.Pointer;
-        memcpy (NewBuf,
-                        &ObjDesc->Integer.Value,
-                        AcpiGbl_IntegerByteWidth);
+        memcpy (NewBuf, &ObjDesc->Integer.Value, AcpiGbl_IntegerByteWidth);
         break;
 
     case ACPI_TYPE_STRING:
@@ -266,8 +269,8 @@ AcpiExConvertToBuffer (
          * ASL/AML code that depends on the null being transferred to the new
          * buffer.
          */
-        ReturnDesc = AcpiUtCreateBufferObject (
-                        (ACPI_SIZE) ObjDesc->String.Length + 1);
+        ReturnDesc = AcpiUtCreateBufferObject ((ACPI_SIZE)
+            ObjDesc->String.Length + 1);
         if (!ReturnDesc)
         {
             return_ACPI_STATUS (AE_NO_MEMORY);
@@ -385,12 +388,13 @@ AcpiExConvertToAscii (
 
         /* HexLength: 2 ascii hex chars per data byte */
 
-        HexLength = ACPI_MUL_2 (DataWidth);
+        HexLength = (DataWidth * 2);
         for (i = 0, j = (HexLength-1); i < HexLength; i++, j--)
         {
             /* Get one hex digit, most significant digits first */
 
-            String[k] = (UINT8) AcpiUtHexToAsciiChar (Integer, ACPI_MUL_4 (j));
+            String[k] = (UINT8)
+                AcpiUtHexToAsciiChar (Integer, ACPI_MUL_4 (j));
             k++;
         }
         break;
@@ -427,7 +431,8 @@ AcpiExConvertToAscii (
  *
  * RETURN:      Status
  *
- * DESCRIPTION: Convert an ACPI Object to a string
+ * DESCRIPTION: Convert an ACPI Object to a string. Supports both implicit
+ *              and explicit conversions and related rules.
  *
  ******************************************************************************/
 
@@ -462,9 +467,11 @@ AcpiExConvertToString (
         switch (Type)
         {
         case ACPI_EXPLICIT_CONVERT_DECIMAL:
-
-            /* Make room for maximum decimal number */
-
+            /*
+             * From ToDecimalString, integer source.
+             *
+             * Make room for the maximum decimal number size
+             */
             StringLength = ACPI_MAX_DECIMAL_DIGITS;
             Base = 10;
             break;
@@ -491,8 +498,8 @@ AcpiExConvertToString (
 
         /* Convert integer to string */
 
-        StringLength = AcpiExConvertToAscii (ObjDesc->Integer.Value, Base,
-                            NewBuf, AcpiGbl_IntegerByteWidth);
+        StringLength = AcpiExConvertToAscii (
+            ObjDesc->Integer.Value, Base, NewBuf, AcpiGbl_IntegerByteWidth);
 
         /* Null terminate at the correct place */
 
@@ -508,8 +515,10 @@ AcpiExConvertToString (
         {
         case ACPI_EXPLICIT_CONVERT_DECIMAL: /* Used by ToDecimalString */
             /*
-             * From ACPI: "If Data is a buffer, it is converted to a string of
-             * decimal values separated by commas."
+             * Explicit conversion from the ToDecimalString ASL operator.
+             *
+             * From ACPI: "If the input is a buffer, it is converted to a
+             * a string of decimal values separated by commas."
              */
             Base = 10;
 
@@ -536,20 +545,29 @@ AcpiExConvertToString (
 
         case ACPI_IMPLICIT_CONVERT_HEX:
             /*
+             * Implicit buffer-to-string conversion
+             *
              * From the ACPI spec:
-             *"The entire contents of the buffer are converted to a string of
+             * "The entire contents of the buffer are converted to a string of
              * two-character hexadecimal numbers, each separated by a space."
+             *
+             * Each hex number is prefixed with 0x (11/2018)
              */
             Separator = ' ';
-            StringLength = (ObjDesc->Buffer.Length * 3);
+            StringLength = (ObjDesc->Buffer.Length * 5);
             break;
 
-        case ACPI_EXPLICIT_CONVERT_HEX:     /* Used by ToHexString */
+        case ACPI_EXPLICIT_CONVERT_HEX:
             /*
+             * Explicit conversion from the ToHexString ASL operator.
+             *
              * From ACPI: "If Data is a buffer, it is converted to a string of
              * hexadecimal values separated by commas."
+             *
+             * Each hex number is prefixed with 0x (11/2018)
              */
-            StringLength = (ObjDesc->Buffer.Length * 3);
+            Separator = ',';
+            StringLength = (ObjDesc->Buffer.Length * 5);
             break;
 
         default:
@@ -580,10 +598,20 @@ AcpiExConvertToString (
          */
         for (i = 0; i < ObjDesc->Buffer.Length; i++)
         {
+            if (Base == 16)
+            {
+                /* Emit 0x prefix for explicit/implicit hex conversion */
+
+                *NewBuf++ = '0';
+                *NewBuf++ = 'x';
+            }
+
             NewBuf += AcpiExConvertToAscii (
-                        (UINT64) ObjDesc->Buffer.Pointer[i], Base,
-                        NewBuf, 1);
-            *NewBuf++ = Separator; /* each separated by a comma or space */
+                (UINT64) ObjDesc->Buffer.Pointer[i], Base, NewBuf, 1);
+
+            /* Each digit is separated by either a comma or space */
+
+            *NewBuf++ = Separator;
         }
 
         /*
@@ -673,6 +701,7 @@ AcpiExConvertToTargetType (
         break;
 
     case ARGI_TARGETREF:
+    case ARGI_STORE_TARGET:
 
         switch (DestinationType)
         {
@@ -685,7 +714,7 @@ AcpiExConvertToTargetType (
              * a Buffer or a String to an Integer if necessary.
              */
             Status = AcpiExConvertToInteger (SourceDesc, ResultDesc,
-                        16);
+                ACPI_IMPLICIT_CONVERSION);
             break;
 
         case ACPI_TYPE_STRING:
@@ -694,7 +723,7 @@ AcpiExConvertToTargetType (
              * Integer or Buffer if necessary
              */
             Status = AcpiExConvertToString (SourceDesc, ResultDesc,
-                        ACPI_IMPLICIT_CONVERT_HEX);
+                ACPI_IMPLICIT_CONVERT_HEX);
             break;
 
         case ACPI_TYPE_BUFFER:
@@ -707,7 +736,8 @@ AcpiExConvertToTargetType (
 
         default:
 
-            ACPI_ERROR ((AE_INFO, "Bad destination type during conversion: 0x%X",
+            ACPI_ERROR ((AE_INFO,
+                "Bad destination type during conversion: 0x%X",
                 DestinationType));
             Status = AE_AML_INTERNAL;
             break;
